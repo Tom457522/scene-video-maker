@@ -1,21 +1,23 @@
 /** エディタが扱うプロジェクトの状態(シーンには並べ替え用の key を付ける。保存時には外す) */
-import type { Project, Scene } from '../video/project';
+import type { Project, Scene, Settings } from '../video/project';
 import { defaultProps, getPart, resolveProps, type PartDef } from '../parts/registry';
 import { z } from 'zod';
 
 export type EditorScene = Scene & { key: string };
-export type EditorProject = { title: string; scenes: EditorScene[] };
+export type EditorProject = { title: string; settings: Settings; scenes: EditorScene[] };
 
 let keySeed = 0;
 export const newKey = () => `s${Date.now().toString(36)}${(keySeed++).toString(36)}`;
 
 export const fromProject = (p: Project): EditorProject => ({
   title: p.title,
+  settings: p.settings,
   scenes: p.scenes.map((s) => ({ ...s, key: newKey() })),
 });
 
 export const toProject = (p: EditorProject): Project => ({
   title: p.title,
+  settings: p.settings,
   scenes: p.scenes.map(({ part, seconds, props }) => ({ part, seconds, props })),
 });
 

@@ -18,10 +18,11 @@ export type PartLoadError = { id: string; message: string };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
-const load = () => {
+/** 部品のモジュール(キーは "./<名前>/index.tsx")を検査して一覧にする */
+export const loadParts = (modules: Record<string, unknown>) => {
   const parts: PartDef[] = [];
   const errors: PartLoadError[] = [];
-  for (const [path, mod] of Object.entries(partModules)) {
+  for (const [path, mod] of Object.entries(modules)) {
     const id = path.split('/')[1];
     if (!isObject(mod)) continue;
     const { meta, schema, Component } = mod;
@@ -43,7 +44,7 @@ const load = () => {
   return { parts, errors };
 };
 
-const loaded = load();
+const loaded = loadParts(partModules);
 
 /** 正しく読み込めた部品(meta.order 順、同じならフォルダ名順) */
 export const parts: readonly PartDef[] = loaded.parts;
@@ -60,7 +61,8 @@ export const defaultProps = (part: PartDef): Record<string, unknown> => part.sch
  * 保存されている入力値を schema で検証し、足りない・不正な項目は既定値で補う。
  * 部品のコンポーネントには必ずこの結果を渡す。
  */
-export const resolveProps = (part: PartDef, raw: unknown): { props: Record<string, unknown>; issues: z.core.$ZodIssue[] } => {
+export const resolveProps = (part: PartDef, input: unknown): { props: Record<string, unknown>; issues: z.core.$ZodIssue[] } => {
+  const raw = part.meta.migrate && isObject(input) ? part.meta.migrate({ ...input }) : input;
   const whole = part.schema.safeParse(raw ?? {});
   if (whole.success) return { props: whole.data as Record<string, unknown>, issues: [] };
   const src = isObject(raw) ? raw : {};

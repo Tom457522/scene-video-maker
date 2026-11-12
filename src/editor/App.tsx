@@ -1,7 +1,7 @@
 /** エディタ画面(上部バー + 3 列: シーン一覧 / プレビュー / 設定) */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getPart, parts } from '../parts/registry';
-import { sceneTimeline, totalFrames, type Project } from '../video/project';
+import { defaultSettings, sceneTimeline, totalFrames, type Project } from '../video/project';
 import { api, type RenderJob } from './api';
 import { clearDraft, formatDraftTime, loadDraft, saveDraft } from './drafts';
 import { useHistory } from './history';
@@ -60,12 +60,12 @@ const askRestore = (name: string, saved: Project | null): Project | null => {
   return null;
 };
 
-const emptyProject = (title: string): EditorProject => ({ title, scenes: parts[0] ? [newScene(parts[0])] : [] });
+const emptyProject = (title: string): EditorProject => ({ title, settings: defaultSettings(), scenes: parts[0] ? [newScene(parts[0])] : [] });
 
 export const App = () => {
   const [projects, setProjects] = useState<string[]>([]);
   const [name, setName] = useState('');
-  const history = useHistory<EditorProject>({ title: '', scenes: [] });
+  const history = useHistory<EditorProject>({ title: '', settings: defaultSettings(), scenes: [] });
   const doc = history.value;
   const [saved, setSaved] = useState<string>('');
   const [selectedRaw, setSelected] = useState(0);
@@ -199,7 +199,7 @@ export const App = () => {
    */
   const revealScene = (i: number, scenes: EditorScene[]) => {
     if (preview.current?.isPlaying()) return;
-    const t = sceneTimeline({ title: '', scenes })[i];
+    const t = sceneTimeline({ scenes })[i];
     if (!t) return;
     const f = preview.current?.getFrame() ?? 0;
     const inSecondHalf = f >= t.from + t.durationInFrames * 0.5 && f < t.from + t.durationInFrames;
@@ -228,7 +228,7 @@ export const App = () => {
     const scenes = [...doc.scenes.slice(0, at), newScene(part), ...doc.scenes.slice(at)];
     updateScenes(scenes);
     setSelected(at);
-    preview.current?.seekTo(sceneTimeline({ title: '', scenes })[at].from);
+    preview.current?.seekTo(sceneTimeline({ scenes })[at].from);
   };
 
   const duplicate = (i: number) => {

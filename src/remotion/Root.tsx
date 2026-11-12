@@ -2,7 +2,10 @@ import { Composition } from 'remotion';
 import { VIDEO } from '../kit/theme';
 import { ProjectVideo, type ProjectVideoProps } from '../video/ProjectVideo';
 import { totalFrames } from '../video/project';
-import sample from '../../projects/sample.json';
+import sampleJson from '../../projects/sample.json';
+import { projectSchema } from '../video/project';
+
+const sample = projectSchema.parse(sampleJson);
 
 import { COMPOSITION_ID } from './composition-id';
 
@@ -13,8 +16,8 @@ export const RemotionRoot = () => (
     width={VIDEO.width}
     height={VIDEO.height}
     fps={VIDEO.fps}
-    durationInFrames={totalFrames(sample as ProjectVideoProps['project'])}
-    defaultProps={{ project: sample as ProjectVideoProps['project'] }}
+    durationInFrames={totalFrames(sample)}
+    defaultProps={{ project: sample }}
     calculateMetadata={({ props }: { props: ProjectVideoProps }) => ({ durationInFrames: totalFrames(props.project) })}
   />
 );

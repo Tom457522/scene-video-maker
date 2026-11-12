@@ -11,6 +11,11 @@ export type PartMeta = {
   defaultSeconds: number;
   /** 一覧での並び順(小さいほど上。省略すると最後尾でフォルダ名順) */
   order?: number;
+  /**
+   * 入力項目を変えたときの移行。保存済みのプロジェクトの古い入力値を受け取り、今の schema の形に直して返す。
+   * 例: 項目名を title → heading に変えたら (p) => ({ ...p, heading: p.heading ?? p.title })
+   */
+  migrate?: (props: Record<string, unknown>) => Record<string, unknown>;
 };
 
 /** 部品のコンポーネントが受け取るもの */

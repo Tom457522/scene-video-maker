@@ -20,7 +20,7 @@ export const SceneList = ({ scenes, selected, onSelect, onAdd, onDuplicate, onDe
   const [dropAt, setDropAt] = useState<number | null>(null);
   const [picking, setPicking] = useState(false);
 
-  const starts = sceneTimeline({ title: '', scenes }).map((t) => t.from / VIDEO.fps);
+  const starts = sceneTimeline({ scenes }).map((t) => t.from / VIDEO.fps);
 
   const finishDrag = () => {
     if (dragFrom !== null && dropAt !== null) {

@@ -13,18 +13,33 @@ export const sceneSchema = z.object({
   props: z.record(z.string(), z.unknown()).default({}),
 });
 
+/** 動画全体の設定(テーマ・章の表示・チャンネル名とロゴ・エンドカード) */
+export const settingsSchema = z.object({
+  theme: z.string().max(40).default('navy'),
+  chapters: z.boolean().default(false),
+  channelName: z.string().max(40).default(''),
+  logo: z.string().max(200).default(''),
+  endCard: z.boolean().default(false),
+  endCardMessage: z.string().max(60).default('ご視聴ありがとうございました'),
+});
+
 export const projectSchema = z.object({
   title: z.string().max(100).default(''),
+  settings: settingsSchema.prefault({}),
   scenes: z.array(sceneSchema).max(200).default([]),
 });
 
 export type Scene = z.output<typeof sceneSchema>;
 export type Project = z.output<typeof projectSchema>;
+export type Settings = z.output<typeof settingsSchema>;
+
+/** 既定の設定 */
+export const defaultSettings = (): Settings => settingsSchema.parse({});
 
 export const sceneFrames = (scene: Pick<Scene, 'seconds'>): number => Math.max(1, Math.round(scene.seconds * VIDEO.fps));
 
 /** 各シーンの開始フレームと長さ */
-export const sceneTimeline = (project: Project): { from: number; durationInFrames: number }[] => {
+export const sceneTimeline = (project: Pick<Project, 'scenes'>): { from: number; durationInFrames: number }[] => {
   let from = 0;
   return project.scenes.map((s) => {
     const durationInFrames = sceneFrames(s);

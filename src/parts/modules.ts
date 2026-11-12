@@ -12,7 +12,12 @@ const collect = (): Record<string, unknown> => {
     const ctx = (require as unknown as WebpackRequire).context('./', true, /^\.\/[^/]+\/index\.tsx$/);
     return Object.fromEntries(ctx.keys().map((k) => [k, ctx(k)]));
   }
-  return import.meta.glob('./*/index.tsx', { eager: true });
+  try {
+    return import.meta.glob('./*/index.tsx', { eager: true });
+  } catch {
+    // Vite でも webpack でもない環境(node でのテストなど)では空。部品は server/parts-node.ts で読む
+    return {};
+  }
 };
 
 /** キーは "./title/index.tsx" の形 */

@@ -7,15 +7,15 @@ import { useCallback, useReducer } from 'react';
 const LIMIT = 100;
 const MERGE_MS = 1000;
 
-type State<T> = { past: T[]; present: T; future: T[]; group: string | null; at: number };
+export type HistoryState<T> = { past: T[]; present: T; future: T[]; group: string | null; at: number };
 
-type Action<T> =
+export type HistoryAction<T> =
   | { type: 'set'; update: (prev: T) => T; group?: string; now: number }
   | { type: 'reset'; value: T }
   | { type: 'undo' }
   | { type: 'redo' };
 
-const reducer = <T,>(s: State<T>, a: Action<T>): State<T> => {
+export const historyReducer = <T,>(s: HistoryState<T>, a: HistoryAction<T>): HistoryState<T> => {
   switch (a.type) {
     case 'set': {
       const next = a.update(s.present);
@@ -44,7 +44,7 @@ const reducer = <T,>(s: State<T>, a: Action<T>): State<T> => {
 };
 
 export const useHistory = <T,>(initial: T) => {
-  const [state, dispatch] = useReducer(reducer<T>, { past: [], present: initial, future: [], group: null, at: 0 });
+  const [state, dispatch] = useReducer(historyReducer<T>, { past: [], present: initial, future: [], group: null, at: 0 });
   /** 変更する。group を渡すと、同じ group の続けての変更を 1 つにまとめる */
   const set = useCallback((update: T | ((prev: T) => T), group?: string) => {
     const fn = typeof update === 'function' ? (update as (prev: T) => T) : () => update;
