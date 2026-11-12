@@ -5,7 +5,7 @@
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { PROJECTS_DIR } from './projects.ts';
+import { PROJECTS_DIR, TRASH_DIR, listProjects, readProject } from './projects.ts';
 
 export const ASSETS_DIR = path.join(PROJECTS_DIR, 'assets');
 /** 1 ファイルの大きさの上限 */
@@ -46,7 +46,7 @@ const looksLikeImage = (b: Buffer): boolean =>
   b.subarray(0, 4).toString() === 'GIF8' ||
   (b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP');
 
-/** 保存する。同じ名前があれば「名前 (2).png」のように別の名前にする。保存した名前を返す */
+/** 保存する。同じ名前があれば「名前-2.png」のように別の名前にする。保存した名前を返す */
 export const saveAsset = async (requestedName: string, data: Buffer): Promise<string> => {
   if (data.length > MAX_ASSET_BYTES) throw new Error('画像が大きすぎます(10MB まで)');
   if (!looksLikeImage(data)) throw new Error('PNG / JPEG / GIF / WebP の画像だけを使えます');
@@ -55,7 +55,40 @@ export const saveAsset = async (requestedName: string, data: Buffer): Promise<st
   await fs.mkdir(ASSETS_DIR, { recursive: true });
   const ext = path.extname(name);
   const base = name.slice(0, -ext.length);
-  for (let i = 2; await fs.access(path.join(ASSETS_DIR, name)).then(() => true, () => false); i++) name = `${base} (${i})${ext}`;
+  for (let i = 2; await fs.access(path.join(ASSETS_DIR, name)).then(() => true, () => false); i++) name = `${base}-${i}${ext}`;
   await fs.writeFile(path.join(ASSETS_DIR, name), data);
   return name;
+};
+
+/** 入力値の中の文字をすべて集める */
+const strings = (v: unknown): string[] =>
+  typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(strings) : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : [];
+
+export type AssetUsage = AssetInfo & { usedBy: string[] };
+
+/** 各画像を、どのプロジェクトが使っているか(保存済みのプロジェクトだけを調べる) */
+export const assetUsage = async (): Promise<AssetUsage[]> => {
+  const used = new Map<string, Set<string>>();
+  for (const name of await listProjects()) {
+    try {
+      const p = await readProject(name);
+      for (const s of new Set(strings({ settings: p.settings, scenes: p.scenes.map((x) => x.props) }))) {
+        if (!used.has(s)) used.set(s, new Set());
+        used.get(s)!.add(name);
+      }
+    } catch {
+      /* 読めないプロジェクトは数えない */
+    }
+  }
+  return (await listAssets()).map((a) => ({ ...a, usedBy: [...(used.get(a.name) ?? [])].sort((x, y) => x.localeCompare(y, 'ja')) }));
+};
+
+/** 削除: 消さずに projects/.trash/ へ移す */
+export const deleteAsset = async (name: string): Promise<void> => {
+  if (!isValidAssetName(name)) throw new Error('ファイル名が不正です');
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  await fs.mkdir(TRASH_DIR, { recursive: true });
+  await fs.rename(path.join(ASSETS_DIR, name), path.join(TRASH_DIR, `asset-${stamp}-${name}`));
 };

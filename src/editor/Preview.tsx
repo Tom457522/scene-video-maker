@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { VIDEO } from '../kit/theme';
 import { ProjectVideo } from '../video/ProjectVideo';
 import { VERTICAL, VerticalVideo } from '../video/VerticalVideo';
+import { cancelPick, finishPick, usePick } from './pick';
 import { formatSeconds, sceneTimeline, totalFrames, type Project } from '../video/project';
 
 export type PreviewHandle = {
@@ -24,6 +25,13 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
   const [loopScene, setLoopScene] = useState(false);
   /** 縦長(ショート)の見え方で確かめる */
   const [vertical, setVertical] = useState(false);
+  const pick = usePick();
+  useEffect(() => {
+    if (!pick) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && cancelPick();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pick]);
   const total = totalFrames(project);
   const timeline = useMemo(() => sceneTimeline(project), [project]);
   const inputProps = useMemo(() => ({ project }), [project]);
@@ -90,6 +98,29 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
           inFrame={loopRange?.from ?? null}
           outFrame={loopRange?.to ?? null}
         />
+        {pick && (
+          <div
+            className="pick-overlay"
+            title={`${pick.label}: クリックした所に決まります(Esc でやめる)`}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              const cw = vertical ? VERTICAL.width : VIDEO.width;
+              const ch = vertical ? VERTICAL.height : VIDEO.height;
+              let x = ((e.clientX - r.left) / r.width) * cw;
+              let y = ((e.clientY - r.top) / r.height) * ch;
+              if (vertical) {
+                // 縦長では横長の動画が中央に縮小して置かれているので、横長の座標に直す
+                const scale = VERTICAL.width / VIDEO.width;
+                const top = Math.round((VERTICAL.height - VIDEO.height * scale) / 2);
+                x = x / scale;
+                y = (y - top) / scale;
+              }
+              finishPick(x, y);
+            }}
+          >
+            <span>{pick.label}: 位置をクリック(Esc でやめる)</span>
+          </div>
+        )}
       </div>
 
       <div className="transport">

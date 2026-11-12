@@ -15,6 +15,9 @@ import { HistoryDialog } from './HistoryDialog';
 import { ReplaceDialog } from './ReplaceDialog';
 import { OutlineDialog } from './OutlineDialog';
 import { ChaptersDialog } from './ChaptersDialog';
+import { NewProjectDialog } from './NewProjectDialog';
+import { AssetsDialog } from './AssetsDialog';
+import { copyScenes, readCopiedScenes } from './clipboard';
 import { replaceAll } from './replace';
 import { buildCues, toSrt } from '../video/srt';
 import { resolveProps } from '../parts/registry';
@@ -69,6 +72,10 @@ const askRestore = (name: string, saved: Project | null): Project | null => {
   return null;
 };
 
+/** 入力値の中の文字をすべて集める(画像のファイル名を探すため) */
+const allStrings = (v: unknown): string[] =>
+  typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(allStrings) : v && typeof v === 'object' ? Object.values(v).flatMap(allStrings) : [];
+
 const emptyProject = (title: string): EditorProject => ({ title, settings: defaultSettings(), scenes: parts[0] ? [newScene(parts[0])] : [] });
 
 export const App = () => {
@@ -83,7 +90,7 @@ export const App = () => {
   const [message, setMessage] = useState('');
   const preview = useRef<PreviewHandle>(null);
   /** 開いているダイアログ */
-  const [dialog, setDialog] = useState<null | 'history' | 'replace' | 'outline' | 'chapters'>(null);
+  const [dialog, setDialog] = useState<null | 'history' | 'replace' | 'outline' | 'chapters' | 'new' | 'assets'>(null);
   const [stillBusy, setStillBusy] = useState(false);
   /** 右列のタブ: 選んだシーンの設定 / 動画全体の設定 */
   const [rightTab, setRightTab] = useState<'scene' | 'video'>('scene');
@@ -258,6 +265,30 @@ export const App = () => {
     setSelected((s) => Math.max(0, Math.min(s > i ? s - 1 : s, doc.scenes.length - 2)));
   };
 
+  const copyScene = (i: number) => {
+    const s = doc.scenes[i];
+    if (!s) return;
+    copyScenes([s]);
+    flash(`シーン ${i + 1} をコピーしました(別のプロジェクトにも貼り付けられます)`);
+  };
+
+  const copyAllScenes = () => {
+    if (doc.scenes.length === 0) return;
+    copyScenes(doc.scenes);
+    flash(`${doc.scenes.length} シーンをすべてコピーしました`);
+  };
+
+  /** コピーしたシーンを、選んでいるシーンの後ろに貼り付ける */
+  const pasteScenes = () => {
+    const copied = readCopiedScenes();
+    if (!copied) return flash('コピーしたシーンがありません');
+    const at = doc.scenes.length === 0 ? 0 : selected + 1;
+    const pasted = copied.map((s) => ({ ...structuredClone(s), key: newKey() }));
+    updateScenes([...doc.scenes.slice(0, at), ...pasted, ...doc.scenes.slice(at)]);
+    setSelected(at);
+    flash(`${pasted.length} シーンを貼り付けました`);
+  };
+
   const move = (from: number, to: number) => {
     const scenes = [...doc.scenes];
     const [x] = scenes.splice(from, 1);
@@ -317,16 +348,18 @@ export const App = () => {
 
   const newProject = () => {
     if (!confirmDiscard()) return;
-    const n = askName('新しいプロジェクトの名前', '新しい動画');
-    if (!n) return;
-    if (projects.includes(n)) return window.alert('同じ名前のプロジェクトがあります');
+    setDialog('new');
+  };
+
+  const createProject = (n: string, scenes: EditorScene[] | null) => {
     clearDraft(n);
     setName(n);
-    reset(emptyProject(n));
+    reset(scenes ? { title: n, settings: defaultSettings(), scenes } : emptyProject(n));
     setSaved('');
     setSelected(0);
     safeStorage.set(LAST_KEY, n);
     preview.current?.seekTo(0);
+    flash(scenes ? `ひな形から ${scenes.length} シーンを作りました(まだ保存していません)` : '新しいプロジェクトを作りました');
   };
 
   const renameCurrent = async () => {
@@ -380,7 +413,7 @@ export const App = () => {
   };
 
   // キーボード: スペース 再生/停止、Ctrl+S 保存、Ctrl+Z 元に戻す、Ctrl+Shift+Z / Ctrl+Y やり直し、
-  // ↑↓ シーンを選ぶ、Alt+↑↓ 並べ替え、Ctrl+D 複製、Delete 削除、L シーンを繰り返す(入力欄の外のみ)
+  // ↑↓ シーンを選ぶ、Alt+↑↓ 並べ替え、Ctrl+D 複製、Ctrl+C / Ctrl+V コピー・貼り付け、Delete 削除、L シーンを繰り返す(入力欄の外のみ)
   const sceneKeys = {
     selectBy: (d: number) => doc.scenes.length > 0 && select(Math.max(0, Math.min(doc.scenes.length - 1, selected + d))),
     moveBy: (d: number) => {
@@ -388,6 +421,8 @@ export const App = () => {
       if (to >= 0 && to < doc.scenes.length) move(selected, to);
     },
     duplicate: () => doc.scenes[selected] && duplicate(selected),
+    copy: () => copyScene(selected),
+    paste: pasteScenes,
     remove: () => doc.scenes[selected] && remove(selected),
   };
   const keys = useRef({ save, undo: history.undo, redo: history.redo, ...sceneKeys });
@@ -421,6 +456,12 @@ export const App = () => {
       if (e.key === ' ') {
         e.preventDefault();
         preview.current?.toggle();
+      } else if (mod && k === 'c' && !window.getSelection()?.toString()) {
+        e.preventDefault();
+        k2.copy();
+      } else if (mod && k === 'v') {
+        e.preventDefault();
+        k2.paste();
       } else if (mod && k === 'd') {
         e.preventDefault();
         k2.duplicate();
@@ -470,7 +511,7 @@ export const App = () => {
         onRedo={history.redo}
         onOpen={(n) => confirmDiscard() && void open(n)}
         projectMenu={[
-          { label: '新規', onClick: newProject },
+          { label: '新規(ひな形から選べる)…', onClick: newProject },
           {
             label: '別名で保存',
             onClick: () => {
@@ -486,8 +527,10 @@ export const App = () => {
         ]}
         toolMenu={[
           { label: '文章からシーンを作る…', onClick: () => setDialog('outline') },
+          { label: 'すべてのシーンをコピー', onClick: copyAllScenes, hint: '別のプロジェクトで Ctrl+V(または「貼り付け」)で貼り付けられます' },
           { label: '一括置換…', onClick: () => setDialog('replace') },
           { label: '動画全体の設定', onClick: () => setRightTab('video') },
+          { label: '画像の管理…', onClick: () => setDialog('assets') },
           { label: '部品の見本ページ(新しいタブ)', onClick: () => window.open('/?gallery', '_blank') },
           { label: 'YouTube の章の時刻…', onClick: () => setDialog('chapters') },
           { label: '字幕ファイル(SRT)を書き出す', onClick: exportSrt, hint: '各シーンの「字幕」に書いた文を、そのシーンの時間に並べます' },
@@ -514,6 +557,8 @@ export const App = () => {
           onSelect={select}
           onAdd={addScene}
           onDuplicate={duplicate}
+          onCopy={copyScene}
+          onPaste={pasteScenes}
           onDelete={remove}
           onMove={move}
         />
@@ -563,6 +608,15 @@ export const App = () => {
           }}
         />
       )}
+      {dialog === 'assets' && (
+        <AssetsDialog
+          current={name}
+          // 編集中(まだ保存していない)の内容で使っている画像
+          usedNow={new Set([doc.settings.logo, ...doc.scenes.flatMap((s) => allStrings(s.props))].filter(Boolean))}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'new' && <NewProjectDialog existing={projects} onClose={() => setDialog(null)} onCreate={createProject} />}
       {dialog === 'chapters' && <ChaptersDialog project={project} onClose={() => setDialog(null)} />}
       {dialog === 'replace' && (
         <ReplaceDialog

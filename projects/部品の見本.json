@@ -1,18 +1,89 @@
 {
   "title": "部品の見本",
-  "settings": { "theme": "navy", "chapters": true, "channelName": "", "logo": "", "endCard": true, "endCardMessage": "ご視聴ありがとうございました" },
+  "settings": {
+    "theme": "navy",
+    "chapters": true,
+    "channelName": "",
+    "logo": "",
+    "endCard": true,
+    "endCardMessage": "ご視聴ありがとうございました"
+  },
   "scenes": [
-    { "part": "title", "seconds": 4, "props": { "kicker": "見本", "title": "部品の見本", "subtitle": "すべての部品を既定の入力で並べたプロジェクト" } },
-    { "part": "bullets", "seconds": 6, "props": {} },
-    { "part": "timeline", "seconds": 7, "props": {} },
-    { "part": "flow", "seconds": 6, "props": {} },
-    { "part": "compare", "seconds": 7, "props": {} },
-    { "part": "bars", "seconds": 6, "props": {} },
-    { "part": "image", "seconds": 6, "props": { "heading": "ブロックがつながるようす", "file": "ブロックの図.png", "markX": 50, "markY": 50, "markSize": 22, "caption": "前のブロックの情報を次のブロックが持っている" } },
-    { "part": "number", "seconds": 5, "props": {} },
-    { "part": "code", "seconds": 7, "props": {} },
-    { "part": "quote", "seconds": 6, "props": { "source": "解説動画メーカーの見本" } },
-    { "part": "qa", "seconds": 7, "props": {} },
-    { "part": "summary", "seconds": 6, "props": {} }
+    {
+      "part": "title",
+      "seconds": 4,
+      "props": {
+        "kicker": "見本",
+        "title": "部品の見本",
+        "subtitle": "すべての部品を既定の入力で並べたプロジェクト"
+      }
+    },
+    {
+      "part": "bullets",
+      "seconds": 6,
+      "props": {}
+    },
+    {
+      "part": "timeline",
+      "seconds": 7,
+      "props": {}
+    },
+    {
+      "part": "flow",
+      "seconds": 6,
+      "props": {}
+    },
+    {
+      "part": "compare",
+      "seconds": 7,
+      "props": {}
+    },
+    {
+      "part": "bars",
+      "seconds": 6,
+      "props": {}
+    },
+    {
+      "part": "image",
+      "seconds": 6,
+      "props": {
+        "heading": "ブロックがつながるようす",
+        "file": "ブロックの図.png",
+        "caption": "前のブロックの情報を次のブロックが持っている",
+        "showMark": true,
+        "mark": {
+          "x": 640,
+          "y": 378
+        },
+        "markSize": 166
+      }
+    },
+    {
+      "part": "number",
+      "seconds": 5,
+      "props": {}
+    },
+    {
+      "part": "code",
+      "seconds": 7,
+      "props": {}
+    },
+    {
+      "part": "quote",
+      "seconds": 6,
+      "props": {
+        "source": "解説動画メーカーの見本"
+      }
+    },
+    {
+      "part": "qa",
+      "seconds": 7,
+      "props": {}
+    },
+    {
+      "part": "summary",
+      "seconds": 6,
+      "props": {}
+    }
   ]
 }

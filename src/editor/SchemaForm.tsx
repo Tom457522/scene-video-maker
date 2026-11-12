@@ -5,6 +5,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { assetUrl, uploadAsset, useAssets } from './assets';
+import { cancelPick, startPick, usePick } from './pick';
 
 export type JsonSchema = {
   type?: string | string[];
@@ -18,6 +19,7 @@ export type JsonSchema = {
   step?: number;
   itemTitle?: string;
   asset?: 'image';
+  point?: boolean;
   minimum?: number;
   maximum?: number;
   maxLength?: number;
@@ -173,6 +175,32 @@ const AssetField = ({ value, onChange }: Omit<FieldProps, 'label' | 'schema'>) =
   );
 };
 
+/** 画面の上の位置(field.point)。プレビューをクリックして決めるか、数値で打つ */
+const PointField = ({ value, onChange, label }: Omit<FieldProps, 'schema'>) => {
+  const pick = usePick();
+  const v = value && typeof value === 'object' ? (value as { x?: unknown; y?: unknown }) : {};
+  const x = typeof v.x === 'number' ? v.x : 640;
+  const y = typeof v.y === 'number' ? v.y : 360;
+  const picking = pick?.label === label;
+  return (
+    <div className="point-field">
+      <button
+        type="button"
+        className={picking ? 'primary' : ''}
+        onClick={() => (picking ? cancelPick() : startPick(label, (nx, ny) => onChange({ x: nx, y: ny })))}
+      >
+        {picking ? 'プレビューをクリック…(Esc でやめる)' : '🎯 プレビューをクリックして決める'}
+      </button>
+      <label>
+        横 <input type="number" min={0} max={1280} value={x} onChange={(e) => e.target.value !== '' && onChange({ x: Number(e.target.value), y })} />
+      </label>
+      <label>
+        縦 <input type="number" min={0} max={720} value={y} onChange={(e) => e.target.value !== '' && onChange({ x, y: Number(e.target.value) })} />
+      </label>
+    </div>
+  );
+};
+
 const NumberField = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) => (
   <input
     type="number"
@@ -243,6 +271,7 @@ const Field = ({ schema, value, onChange, label, bare }: FieldProps & { bare?: b
   let control;
   const t = typeOf(schema);
   if (schema.asset === 'image') control = <AssetField value={value} onChange={onChange} />;
+  else if (schema.point) control = <PointField value={value} onChange={onChange} label={label} />;
   else if (schema.enum || (schema.options && t === 'string')) {
     const choices = schema.enum ?? Object.keys(schema.options ?? {});
     control = (

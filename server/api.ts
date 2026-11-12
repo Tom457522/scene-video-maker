@@ -11,7 +11,8 @@
  *   GET  /api/projects/:name/history       前の版の一覧
  *   GET  /api/projects/:name/history/:id   前の版の中身
  *   POST /api/render/:id/cancel   書き出しの中止
- *   GET  /api/assets              画像の一覧
+ *   GET  /api/assets[?usage]      画像の一覧(usage を付けると、使っているプロジェクトも返す)
+ *   DELETE /api/assets/:name      画像の削除(projects/.trash/ へ移す)
  *   POST /api/assets              画像を保存 { name, data(base64) } → { name }
  *   POST /api/still               1 シーンを PNG で書き出す { name, project, scene } → { file }
  *   GET  /api/output/:file        書き出した MP4 のダウンロード
@@ -24,7 +25,7 @@ import { projectSchema } from '../src/video/project.ts';
 import { OUT_DIR, deleteProject, isValidName, listHistory, listProjects, readHistory, readProject, renameProject, writeProject } from './projects.ts';
 import type { Stage } from './render.ts';
 import { EXPORT_FORMATS, type ExportFormat } from '../src/remotion/composition-id.ts';
-import { MAX_ASSET_BYTES, listAssets, saveAsset } from './assets.ts';
+import { MAX_ASSET_BYTES, assetUsage, deleteAsset, isValidAssetName, listAssets, saveAsset } from './assets.ts';
 
 type Job = {
   id: string;
@@ -246,8 +247,18 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
     }
   }
 
+  if (parts[0] === 'assets' && parts.length === 2 && method === 'DELETE') {
+    if (!isValidAssetName(parts[1])) return send(res, 400, { error: 'ファイル名が不正です' });
+    try {
+      await deleteAsset(parts[1]);
+      return send(res, 200, { deleted: parts[1] });
+    } catch (e) {
+      return send(res, 400, { error: errorMessage(e) });
+    }
+  }
+
   if (parts[0] === 'assets' && parts.length === 1) {
-    if (method === 'GET') return send(res, 200, { assets: await listAssets() });
+    if (method === 'GET') return send(res, 200, { assets: url.searchParams.has('usage') ? await assetUsage() : await listAssets() });
     if (method === 'POST') {
       try {
         // base64 は元の大きさの約 4/3 になる

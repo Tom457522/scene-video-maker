@@ -25,6 +25,8 @@ export type FieldMeta = {
   itemTitle?: string;
   /** 'image' なら、画像を選ぶ・アップロードする入力欄にする */
   asset?: 'image';
+  /** true なら、プレビューをクリックして位置を決める入力欄にする(field.point) */
+  point?: boolean;
 };
 
 const MARK_HINT = '[[ ]] で囲んだ語にマーカーが引かれます';
@@ -66,6 +68,16 @@ export const field = {
       .max(200)
       .default('')
       .meta({ title, asset: 'image', description: opts.description } satisfies FieldMeta),
+
+  /**
+   * 画面の上の位置(x: 0〜1280、y: 0〜720 の px)。エディタではプレビューをクリックして決められる。
+   * 部品では props.xxx.x / props.xxx.y をそのまま座標として使う。
+   */
+  point: (title: string, def: { x: number; y: number }, opts: { description?: string } = {}) =>
+    z
+      .object({ x: z.number().min(0).max(1280), y: z.number().min(0).max(720) })
+      .default(def)
+      .meta({ title, point: true, description: opts.description ?? 'プレビューをクリックして決められます' } satisfies FieldMeta),
 
   /** オン/オフ */
   toggle: (title: string, def: boolean, opts: { description?: string } = {}) =>

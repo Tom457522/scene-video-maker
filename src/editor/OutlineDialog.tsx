@@ -1,11 +1,10 @@
 /** 文章(アウトライン)からシーンを作る */
 import { useMemo, useState } from 'react';
 import { getPart } from '../parts/registry';
-import { recommendedSeconds } from '../video/reading';
-import { fitToSchema } from './fit';
+import { outlineToScenes } from './fromOutline';
 import { Modal } from './Modal';
-import { OUTLINE_EXAMPLE, parseOutline } from './outline';
-import { newKey, sceneSummary, type EditorScene } from './state';
+import { OUTLINE_EXAMPLE } from './outline';
+import { sceneSummary, type EditorScene } from './state';
 
 const RULES = [
   ['# タイトル', 'タイトル(次の行はサブタイトル)'],
@@ -34,26 +33,7 @@ export const OutlineDialog = ({
   hasScenes: boolean;
 }) => {
   const [text, setText] = useState('');
-  const result = useMemo(() => {
-    const parsed = parseOutline(text);
-    const scenes: { scene: EditorScene; notes: string[] }[] = [];
-    for (const s of parsed.scenes) {
-      const part = getPart(s.part) ?? getPart('bullets');
-      if (!part) continue;
-      const fitted = fitToSchema(part.schema, s.props);
-      const merged = { ...(part.schema.parse({}) as Record<string, unknown>), ...fitted.props };
-      scenes.push({
-        scene: {
-          key: newKey(),
-          part: part.id,
-          seconds: Math.min(60, Math.max(part.meta.defaultSeconds, recommendedSeconds(merged))),
-          props: merged,
-        },
-        notes: fitted.notes,
-      });
-    }
-    return { title: parsed.title, scenes };
-  }, [text]);
+  const result = useMemo(() => outlineToScenes(text), [text]);
   const apply = (mode: 'replace' | 'append') => {
     onApply(
       result.scenes.map((s) => s.scene),

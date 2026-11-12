@@ -37,3 +37,13 @@ test('resolveProps: 不正な項目だけ既定値で補い、問題を返す', 
   assert.equal(r.props.n, 1);
   assert.equal(r.issues.length, 1);
 });
+
+test('image: 以前の丸の位置(枠に対する %)を画面の座標に移す', async () => {
+  const { parts } = await loadPartsInNode();
+  const image = parts.find((p) => p.id === 'image')!;
+  const r = resolveProps(image, { heading: '見出し', file: 'a.png', markX: 50, markY: 50, markSize: 20, caption: '字幕' });
+  assert.deepEqual(r.issues, []);
+  assert.equal(r.props.showMark, true);
+  assert.deepEqual(r.props.mark, { x: 640, y: 378 });
+  assert.equal(resolveProps(image, { markX: 0 }).props.showMark, false);
+});

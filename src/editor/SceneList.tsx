@@ -8,6 +8,7 @@ import { isTooShort, recommendedSeconds } from '../video/reading';
 import { VIDEO } from '../kit/theme';
 import { formatSeconds, sceneTimeline } from '../video/project';
 import { sceneSummary, type EditorScene } from './state';
+import { useCopiedScenes } from './clipboard';
 
 /** シーンの見どころ(70% の時点)の縮小画像。シーンか設定が変わったときだけ描き直す */
 const SceneThumb = memo(({ scene, settings }: { scene: EditorScene; settings: Settings }) => {
@@ -36,11 +37,14 @@ type Props = {
   onSelect: (i: number) => void;
   onAdd: (partId: string) => void;
   onDuplicate: (i: number) => void;
+  onCopy: (i: number) => void;
+  onPaste: () => void;
   onDelete: (i: number) => void;
   onMove: (from: number, to: number) => void;
 };
 
-export const SceneList = ({ settings, scenes, selected, onSelect, onAdd, onDuplicate, onDelete, onMove }: Props) => {
+export const SceneList = ({ settings, scenes, selected, onSelect, onAdd, onDuplicate, onCopy, onPaste, onDelete, onMove }: Props) => {
+  const copied = useCopiedScenes();
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
   const [picking, setPicking] = useState(false);
@@ -116,6 +120,16 @@ export const SceneList = ({ settings, scenes, selected, onSelect, onAdd, onDupli
               <div className="scene-tools">
                 <button
                   type="button"
+                  title="コピー(Ctrl+C。別のプロジェクトにも貼り付けられる)"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCopy(i);
+                  }}
+                >
+                  📋
+                </button>
+                <button
+                  type="button"
                   title="複製"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -141,9 +155,16 @@ export const SceneList = ({ settings, scenes, selected, onSelect, onAdd, onDupli
       </ol>
 
       <div className="add-scene">
-        <button type="button" className="primary wide" onClick={() => setPicking((v) => !v)}>
-          + シーンを追加
-        </button>
+        <div className="add-row">
+          <button type="button" className="primary wide" onClick={() => setPicking((v) => !v)}>
+            + シーンを追加
+          </button>
+          {copied && (
+            <button type="button" className="paste" onClick={onPaste} title="コピーしたシーンを、選んでいるシーンの後ろに貼り付ける(Ctrl+V)">
+              📋 貼り付け({copied.length})
+            </button>
+          )}
+        </div>
         {picking && (
           <div className="part-picker">
             {parts.map((p) => (
