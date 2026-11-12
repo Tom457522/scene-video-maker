@@ -12,6 +12,10 @@ type Props = {
   saving: boolean;
   job: RenderJob | null;
   message: string;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onOpen: (name: string) => void;
   onNew: () => void;
   onSaveAs: () => void;
@@ -49,6 +53,14 @@ export const TopBar = (p: Props) => {
       <input type="text" className="title-input" value={p.title} placeholder="動画のタイトル" maxLength={100} onChange={(e) => p.onTitle(e.target.value)} />
       <div className="total" title="合計時間">
         ⏱ {formatSeconds(p.totalFrames / VIDEO.fps)}
+      </div>
+      <div className="history">
+        <button type="button" onClick={p.onUndo} disabled={!p.canUndo} title="元に戻す(Ctrl+Z)" aria-label="元に戻す">
+          ↶
+        </button>
+        <button type="button" onClick={p.onRedo} disabled={!p.canRedo} title="やり直し(Ctrl+Shift+Z / Ctrl+Y)" aria-label="やり直し">
+          ↷
+        </button>
       </div>
       <div className="spacer" />
       {p.message && <div className="message">{p.message}</div>}

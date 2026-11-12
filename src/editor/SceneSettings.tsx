@@ -7,7 +7,8 @@ import type { EditorScene } from './state';
 type Props = {
   scene: EditorScene | undefined;
   index: number;
-  onChange: (scene: EditorScene) => void;
+  /** field は変更した項目('seconds' / 'props')。続けての入力を 1 回の「元に戻す」にまとめるのに使う */
+  onChange: (scene: EditorScene, field: string) => void;
   onSwitchPart: (partId: string) => void;
 };
 
@@ -47,7 +48,7 @@ export const SceneSettings = ({ scene, index, onChange, onSwitchPart }: Props) =
               max={20}
               step={0.5}
               value={Math.min(scene.seconds, 20)}
-              onChange={(e) => onChange({ ...scene, seconds: Number(e.target.value) })}
+              onChange={(e) => onChange({ ...scene, seconds: Number(e.target.value) }, 'seconds')}
             />
             <input
               type="number"
@@ -57,7 +58,7 @@ export const SceneSettings = ({ scene, index, onChange, onSwitchPart }: Props) =
               value={scene.seconds}
               onChange={(e) => {
                 const n = Number(e.target.value);
-                if (e.target.value !== '' && Number.isFinite(n)) onChange({ ...scene, seconds: Math.min(MAX_SECONDS, Math.max(MIN_SECONDS, n)) });
+                if (e.target.value !== '' && Number.isFinite(n)) onChange({ ...scene, seconds: Math.min(MAX_SECONDS, Math.max(MIN_SECONDS, n)) }, 'seconds');
               }}
             />
             <span className="muted">秒</span>
@@ -83,7 +84,7 @@ export const SceneSettings = ({ scene, index, onChange, onSwitchPart }: Props) =
             key={scene.key + scene.part}
             schema={part.schema}
             value={resolved.props}
-            onChange={(props) => onChange({ ...scene, props })}
+            onChange={(props) => onChange({ ...scene, props }, 'props')}
           />
         </>
       ) : (

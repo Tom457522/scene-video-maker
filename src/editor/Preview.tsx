@@ -117,7 +117,7 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
         </div>
       </div>
       <div className="muted small center">
-        クリックで再生/停止・ダブルクリックで全画面・スペースで再生/停止・Ctrl+S で保存
+        クリックで再生/停止・ダブルクリックで全画面・スペースで再生/停止・Ctrl+S で保存・Ctrl+Z で元に戻す
       </div>
     </main>
   );
