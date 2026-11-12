@@ -2,7 +2,7 @@
  * 部品が共通で使う見た目の要素。どれも frame を受け取り、frame だけから見た目を決める。
  */
 import type { CSSProperties, ReactNode } from 'react';
-import { colors, alpha, font, layout, VIDEO } from './theme';
+import { colors, alpha, font, layout, setTheme, VIDEO } from './theme';
 import { T, drift, ease, exitProgress, mix, progress } from './motion';
 import { estimateLines, fitFontSize, parseMarks } from './text';
 
@@ -18,40 +18,47 @@ export const Fill = ({ children, style }: { children?: ReactNode; style?: CSSPro
   <div style={{ position: 'absolute', inset: 0, ...style }}>{children}</div>
 );
 
-/** 動画全体の土台(背景色・フォント)。部品ではなく動画の側で使う */
-export const Stage = ({ children }: { children?: ReactNode }) => (
-  <div
-    lang="ja"
-    style={{
-      position: 'absolute',
-      inset: 0,
-      overflow: 'hidden',
-      background: colors.bg,
-      color: colors.text,
-      fontFamily: font.family,
-      fontWeight: font.weight.bold,
-      fontFeatureSettings: '"palt"',
-    }}
-  >
-    {children}
-  </div>
-);
+/** 動画全体の土台(テーマ・背景色・フォント)。部品ではなく動画の側で使う */
+export const Stage = ({ children, theme = 'navy' }: { children?: ReactNode; theme?: string }) => {
+  // 子(部品)より先にテーマを決める
+  setTheme(theme);
+  return (
+    <div
+      lang="ja"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'hidden',
+        background: colors.bg,
+        color: colors.text,
+        fontFamily: font.family,
+        fontWeight: font.weight.bold,
+        fontFeatureSettings: '"palt"',
+      }}
+    >
+      {children}
+    </div>
+  );
+};
 
 /**
  * 背景: ゆっくり流れるドットと、漂う輪。動画全体のフレームを渡すとシーンをまたいでも途切れない。
  */
-export const Background = ({ frame }: { frame: number }) => {
+export const Background = ({ frame, width = VIDEO.width, height = VIDEO.height }: { frame: number; width?: number; height?: number }) => {
   const gap = 48;
   const ox = (frame * 0.3) % gap;
   const oy = (frame * 0.15) % gap;
+  // 輪の位置は画面の大きさに合わせる(横長 1280×720 が基準)
+  const sx = width / VIDEO.width;
+  const sy = height / VIDEO.height;
   const rings = [
-    { cx: 1080, cy: 140, r: 210, color: colors.teal, period: 360, phase: 0 },
-    { cx: 170, cy: 620, r: 150, color: colors.yellow, period: 300, phase: 0.3 },
-    { cx: 1180, cy: 640, r: 90, color: colors.coral, period: 240, phase: 0.6 },
+    { cx: 1080 * sx, cy: 140 * sy, r: 210, color: colors.teal, period: 360, phase: 0 },
+    { cx: 170 * sx, cy: 620 * sy, r: 150, color: colors.yellow, period: 300, phase: 0.3 },
+    { cx: 1180 * sx, cy: 640 * sy, r: 90, color: colors.coral, period: 240, phase: 0.6 },
   ];
   return (
     <Fill>
-      <svg width={VIDEO.width} height={VIDEO.height} viewBox={`0 0 ${VIDEO.width} ${VIDEO.height}`}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
         <defs>
           <pattern id="kit-dots" width={gap} height={gap} patternUnits="userSpaceOnUse" x={ox} y={oy}>
             <circle cx={gap / 2} cy={gap / 2} r={1.8} fill={alpha(colors.sub, 0.16)} />

@@ -4,28 +4,113 @@
 
 export const VIDEO = { width: 1280, height: 720, fps: 30 } as const;
 
+/** テーマ(色の組み合わせ)。動画全体の設定で選ぶ。部品は colors を通して今のテーマの色を使う */
+export type Theme = {
+  name: string;
+  bg: string;
+  text: string;
+  sub: string;
+  yellow: string;
+  teal: string;
+  coral: string;
+  /** 強調色(黄・青緑・朱)の上に載せる文字の色 */
+  onAccent: string;
+};
+
+export const themes = {
+  navy: {
+    name: 'ネイビー(標準)',
+    bg: '#0E1630',
+    text: '#F4F6FB',
+    sub: '#B9C2E0',
+    yellow: '#FFC53D',
+    teal: '#4FD1C5',
+    coral: '#FF7A59',
+    onAccent: '#0E1630',
+  },
+  light: {
+    name: 'ライト',
+    bg: '#F5F7FC',
+    text: '#18213F',
+    sub: '#56608A',
+    yellow: '#E3A008',
+    teal: '#0F9F91',
+    coral: '#E8573A',
+    onAccent: '#FFFFFF',
+  },
+  black: {
+    name: 'ブラック',
+    bg: '#0B0B0F',
+    text: '#F5F5F7',
+    sub: '#A1A1AA',
+    yellow: '#FACC15',
+    teal: '#2DD4BF',
+    coral: '#FB7185',
+    onAccent: '#0B0B0F',
+  },
+  forest: {
+    name: 'フォレスト',
+    bg: '#0F2A23',
+    text: '#F1F7F4',
+    sub: '#A9C7BC',
+    yellow: '#F2C14E',
+    teal: '#6FD3B4',
+    coral: '#F28C6B',
+    onAccent: '#0F2A23',
+  },
+} satisfies Record<string, Theme>;
+
+export type ThemeId = keyof typeof themes;
+
+let current: Theme = themes.navy;
+
+/**
+ * 今のテーマを切り替える。動画の土台(Stage)が描画のはじめに呼ぶので、部品から呼ぶ必要はない。
+ * 同じプロジェクトなら必ず同じテーマになるので、「同じフレームは同じ絵」は保たれる。
+ */
+export const setTheme = (id: string): void => {
+  current = (themes as Record<string, Theme>)[id] ?? themes.navy;
+};
+
+/** 今のテーマの色。部品はここにある色だけを使い、色を独自に定義しない */
 export const colors = {
   /** 背景 */
-  bg: '#0E1630',
+  get bg() {
+    return current.bg;
+  },
   /** 本文の文字 */
-  text: '#F4F6FB',
+  get text() {
+    return current.text;
+  },
   /** 補助の文字(サブタイトル・ラベルなど) */
-  sub: '#B9C2E0',
+  get sub() {
+    return current.sub;
+  },
   /** 黄(強調・マーカー) */
-  yellow: '#FFC53D',
+  get yellow() {
+    return current.yellow;
+  },
   /** 青緑 */
-  teal: '#4FD1C5',
+  get teal() {
+    return current.teal;
+  },
   /** 朱 */
-  coral: '#FF7A59',
-} as const;
+  get coral() {
+    return current.coral;
+  },
+  /** 強調色の上に載せる文字(番号バッジの数字など) */
+  get onAccent() {
+    return current.onAccent;
+  },
+};
 
 export type ColorName = keyof typeof colors;
 
-/** 順番に色を変えたいとき(棒グラフ・番号バッジなど)に使う、強調色の並び */
-export const accentCycle = [colors.yellow, colors.teal, colors.coral] as const;
-
-/** i 番目の強調色(はみ出したら先頭に戻る) */
-export const accent = (i: number): string => accentCycle[((i % accentCycle.length) + accentCycle.length) % accentCycle.length];
+/** i 番目の強調色(黄 → 青緑 → 朱 の順。はみ出したら先頭に戻る) */
+export const accent = (i: number): string => {
+  const list = [current.yellow, current.teal, current.coral];
+  return list[((i % list.length) + list.length) % list.length];
+};
 
 /** #RRGGBB に透明度を付けた rgba() を返す。半透明の面や線はこれで作る */
 export const alpha = (hex: string, a: number): string => {
@@ -35,10 +120,16 @@ export const alpha = (hex: string, a: number): string => {
 
 /** パネル・カードの面と枠線 */
 export const surface = {
-  fill: alpha(colors.text, 0.06),
-  fillStrong: alpha(colors.text, 0.1),
-  border: alpha(colors.sub, 0.28),
-} as const;
+  get fill() {
+    return alpha(colors.text, 0.06);
+  },
+  get fillStrong() {
+    return alpha(colors.text, 0.1);
+  },
+  get border() {
+    return alpha(colors.sub, 0.28);
+  },
+};
 
 export const font = {
   family: '"Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif',

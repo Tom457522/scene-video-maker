@@ -3,6 +3,7 @@ import { Player, type PlayerRef } from '@remotion/player';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { VIDEO } from '../kit/theme';
 import { ProjectVideo } from '../video/ProjectVideo';
+import { VERTICAL, VerticalVideo } from '../video/VerticalVideo';
 import { formatSeconds, sceneTimeline, totalFrames, type Project } from '../video/project';
 
 export type PreviewHandle = {
@@ -21,6 +22,8 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
   const [playing, setPlaying] = useState(false);
   /** 選んだシーンだけを繰り返し再生する */
   const [loopScene, setLoopScene] = useState(false);
+  /** 縦長(ショート)の見え方で確かめる */
+  const [vertical, setVertical] = useState(false);
   const total = totalFrames(project);
   const timeline = useMemo(() => sceneTimeline(project), [project]);
   const inputProps = useMemo(() => ({ project }), [project]);
@@ -69,15 +72,15 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
 
   return (
     <main className="col col-center">
-      <div className="player-wrap">
+      <div className={vertical ? 'player-wrap vertical' : 'player-wrap'}>
         <Player
           ref={player}
-          component={ProjectVideo}
+          component={vertical ? VerticalVideo : ProjectVideo}
           inputProps={inputProps}
           durationInFrames={total}
           fps={VIDEO.fps}
-          compositionWidth={VIDEO.width}
-          compositionHeight={VIDEO.height}
+          compositionWidth={vertical ? VERTICAL.width : VIDEO.width}
+          compositionHeight={vertical ? VERTICAL.height : VIDEO.height}
           style={{ width: '100%' }}
           clickToPlay
           spaceKeyToPlayOrPause={false}
@@ -137,6 +140,14 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
           }}
         >
           🔁 シーン
+        </button>
+        <button
+          type="button"
+          className={vertical ? 'loop on' : 'loop'}
+          title="縦長(9:16・ショート向け)で書き出したときの見え方に切り替える"
+          onClick={() => setVertical((v) => !v)}
+        >
+          {vertical ? '▯ 縦' : '▭ 横'}
         </button>
         <div className="time">
           {formatSeconds(frame / VIDEO.fps)} / {formatSeconds(total / VIDEO.fps)}

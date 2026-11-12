@@ -31,8 +31,8 @@ export const api = {
   load: (name: string) => call<{ project: Project }>(`/api/projects/${enc(name)}`).then((r) => r.project),
   save: (name: string, project: Project) =>
     call<{ project: Project }>(`/api/projects/${enc(name)}`, { method: 'PUT', body: JSON.stringify(project) }).then((r) => r.project),
-  startRender: (name: string, project: Project) =>
-    call<{ job: RenderJob }>('/api/render', { method: 'POST', body: JSON.stringify({ name, project }) }).then((r) => r.job),
+  startRender: (name: string, project: Project, format: string) =>
+    call<{ job: RenderJob }>('/api/render', { method: 'POST', body: JSON.stringify({ name, project, format }) }).then((r) => r.job),
   renderStatus: (id: string) => call<{ job: RenderJob }>(`/api/render/${enc(id)}`).then((r) => r.job),
   outputUrl: (file: string) => `/api/output/${enc(file)}`,
   renderStill: (name: string, project: Project, scene: number) =>

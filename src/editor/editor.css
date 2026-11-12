@@ -181,3 +181,14 @@ button.ghost { background: none; border-color: transparent; font-size: 18px; pad
 .outline-preview .item b { color: var(--primary); }
 .notes { color: var(--accent); font-size: 11px; }
 .chapters-text { width: 100%; height: 200px; font-family: ui-monospace, Consolas, monospace; }
+.tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 6px 12px; color: var(--muted); }
+.tabs button.on { color: var(--text); border-bottom-color: var(--primary); font-weight: 700; }
+.asset-field { display: flex; flex-direction: column; gap: 6px; }
+.asset-row { display: flex; gap: 6px; }
+.asset-row select { flex: 1; min-width: 0; }
+.upload { flex: none; cursor: pointer; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+.upload.busy { opacity: 0.5; cursor: default; }
+.asset-preview { max-width: 100%; max-height: 120px; object-fit: contain; align-self: flex-start; border-radius: 6px; background: #0e1630; }
+.player-wrap.vertical { max-width: calc((100vh - 220px) * 9 / 16); }
+.export select { width: auto; padding: 6px 8px; font-size: 12px; }

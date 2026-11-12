@@ -6,4 +6,5 @@ export * from './motion';
 export * from './text';
 export * from './fields';
 export * from './components';
+export * from './media';
 export type * from './types';

@@ -23,6 +23,8 @@ export type FieldMeta = {
   step?: number;
   /** リストの 1 件の呼び名(「項目」「行」など) */
   itemTitle?: string;
+  /** 'image' なら、画像を選ぶ・アップロードする入力欄にする */
+  asset?: 'image';
 };
 
 const MARK_HINT = '[[ ]] で囲んだ語にマーカーが引かれます';
@@ -56,6 +58,14 @@ export const field = {
     if (opts.max !== undefined) s = s.max(opts.max);
     return s.default(def).meta({ title, step: opts.step, description: opts.description } satisfies FieldMeta);
   },
+
+  /** 画像(projects/assets/ のファイル名)。空文字は「画像なし」 */
+  image: (title: string, opts: { description?: string } = {}) =>
+    z
+      .string()
+      .max(200)
+      .default('')
+      .meta({ title, asset: 'image', description: opts.description } satisfies FieldMeta),
 
   /** オン/オフ */
   toggle: (title: string, def: boolean, opts: { description?: string } = {}) =>

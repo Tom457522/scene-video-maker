@@ -82,7 +82,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
                   height: BADGE,
                   borderRadius: '50%',
                   background: accent(i),
-                  color: colors.bg,
+                  color: colors.onAccent,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

@@ -9,10 +9,11 @@ import { bundle } from '@remotion/bundler';
 import { renderMedia, renderStill, selectComposition, ensureBrowser, makeCancelSignal } from '@remotion/renderer';
 
 export { makeCancelSignal };
-import { COMPOSITION_ID } from '../src/remotion/composition-id.ts';
+import { COMPOSITION_ID, EXPORT_FORMATS, type ExportFormat } from '../src/remotion/composition-id.ts';
 import { sceneTimeline, type Project } from '../src/video/project.ts';
 import { LAYOUT_LOG_PREFIX, type LayoutIssue } from '../src/video/layout-check.ts';
 import { ROOT } from './projects.ts';
+import { ASSETS_DIR } from './assets.ts';
 
 const ENTRY = path.join(ROOT, 'src', 'remotion', 'index.ts');
 const SRC = path.join(ROOT, 'src');
@@ -42,19 +43,34 @@ const latestMtime = async (dir: string): Promise<number> => {
 };
 
 let cached: { key: number; serveUrl: string } | null = null;
+let inflight: { key: number; promise: Promise<string> } | null = null;
 
+/**
+ * Remotion のバンドルを返す。src/ か projects/assets/(画像)が変わったときだけ作り直す。
+ * 同時に呼ばれても(起動時の準備と書き出しが重なっても)バンドルは 1 回だけ作る。
+ */
 export const getBundle = async (onProgress?: (p: number) => void): Promise<string> => {
-  const key = await latestMtime(SRC);
+  await fs.mkdir(ASSETS_DIR, { recursive: true });
+  const key = Math.max(await latestMtime(SRC), await latestMtime(ASSETS_DIR));
   if (cached && cached.key === key) return cached.serveUrl;
+  if (inflight && inflight.key === key) return inflight.promise;
   const previous = cached;
-  const serveUrl = await bundle({
+  const promise = bundle({
     entryPoint: ENTRY,
     onProgress: (p) => onProgress?.(p / 100),
     outDir: path.join(os.tmpdir(), 'scene-video-maker', `bundle-${Date.now()}`),
+    publicDir: ASSETS_DIR,
+  }).then(async (serveUrl) => {
+    cached = { key, serveUrl };
+    inflight = null;
+    if (previous) await fs.rm(previous.serveUrl, { recursive: true, force: true }).catch(() => undefined);
+    return serveUrl;
   });
-  cached = { key, serveUrl };
-  if (previous) await fs.rm(previous.serveUrl, { recursive: true, force: true }).catch(() => undefined);
-  return serveUrl;
+  inflight = { key, promise };
+  promise.catch(() => {
+    inflight = null;
+  });
+  return promise;
 };
 
 let browserReady = false;
@@ -70,11 +86,11 @@ const prepareBrowser = async (onProgress?: (p: number) => void) => {
   browserReady = true;
 };
 
-const prepare = async (project: Project, onProgress: ProgressFn, checkLayout = false) => {
+const prepare = async (project: Project, onProgress: ProgressFn, checkLayout = false, id: string = COMPOSITION_ID) => {
   const serveUrl = await getBundle((p) => onProgress('bundling', p));
   await prepareBrowser((p) => onProgress('browser', p));
   const inputProps = { project, checkLayout };
-  const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable });
+  const composition = await selectComposition({ serveUrl, id, inputProps, browserExecutable });
   return { serveUrl, inputProps, composition };
 };
 
@@ -83,9 +99,10 @@ export const renderVideo = async (
   project: Project,
   outputLocation: string,
   onProgress: ProgressFn = () => undefined,
-  opts: { cancelSignal?: ReturnType<typeof makeCancelSignal>['cancelSignal']; isCancelled?: () => boolean } = {},
+  opts: { cancelSignal?: ReturnType<typeof makeCancelSignal>['cancelSignal']; isCancelled?: () => boolean; format?: ExportFormat } = {},
 ) => {
-  const { serveUrl, inputProps, composition } = await prepare(project, onProgress);
+  const format = EXPORT_FORMATS[opts.format ?? '720p'];
+  const { serveUrl, inputProps, composition } = await prepare(project, onProgress, false, format.composition);
   // バンドル中は止められないので、終わった時点で中止の指示があれば書き出しを始めない
   if (opts.isCancelled?.()) throw new RenderCancelled();
   await fs.mkdir(path.dirname(outputLocation), { recursive: true });
@@ -95,6 +112,8 @@ export const renderVideo = async (
     inputProps,
     codec: 'h264',
     muted: true,
+    // 1080p は 720p の画面を 1.5 倍の解像度で撮る(文字や図形はベクターなのでぼやけない)
+    scale: format.scale,
     outputLocation,
     browserExecutable,
     cancelSignal: opts.cancelSignal,
@@ -158,4 +177,12 @@ export const renderOneStill = async (project: Project, sceneIndex: number, outpu
   const frame = t.from + Math.min(t.durationInFrames - 1, Math.floor(t.durationInFrames * ratio));
   await renderStill({ composition, serveUrl, inputProps, frame, output, browserExecutable });
   return output;
+};
+
+/** 起動直後に、書き出しの準備(バンドル作成とブラウザの用意)を裏で済ませておく */
+export const warmUp = async () => {
+  const t = Date.now();
+  await getBundle();
+  await prepareBrowser();
+  return Date.now() - t;
 };

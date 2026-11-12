@@ -2,7 +2,8 @@
  * プロジェクト(= 1 本の動画)の形。projects/<名前>.json に保存する。
  */
 import { z } from 'zod';
-import { VIDEO } from '../kit/theme.ts';
+import { VIDEO, themes } from '../kit/theme.ts';
+import { field } from '../kit/fields.ts';
 
 export const MIN_SECONDS = 1;
 export const MAX_SECONDS = 60;
@@ -15,12 +16,16 @@ export const sceneSchema = z.object({
 
 /** 動画全体の設定(テーマ・章の表示・チャンネル名とロゴ・エンドカード) */
 export const settingsSchema = z.object({
-  theme: z.string().max(40).default('navy'),
-  chapters: z.boolean().default(false),
-  channelName: z.string().max(40).default(''),
-  logo: z.string().max(200).default(''),
-  endCard: z.boolean().default(false),
-  endCardMessage: z.string().max(60).default('ご視聴ありがとうございました'),
+  theme: z
+    .string()
+    .max(40)
+    .default('navy')
+    .meta({ title: 'テーマ', options: Object.fromEntries(Object.entries(themes).map(([id, t]) => [id, t.name])) }),
+  chapters: field.toggle('章の表示', false, { description: '右上に今の章(見出し)、下の端に進み具合を出す' }),
+  channelName: field.text('チャンネル名', '', { max: 40, description: '右上とエンドカードに出す。空欄なら出さない' }),
+  logo: field.image('ロゴ画像', { description: '右上とエンドカードに出す' }),
+  endCard: field.toggle('エンドカード', false, { description: '最後に 4 秒の締めの画面を付ける' }),
+  endCardMessage: field.text('エンドカードの文', 'ご視聴ありがとうございました', { max: 60 }),
 });
 
 export const projectSchema = z.object({
@@ -49,8 +54,15 @@ export const sceneTimeline = (project: Pick<Project, 'scenes'>): { from: number;
   });
 };
 
-/** 動画全体のフレーム数(シーンが無いときも 1 フレームは作る) */
-export const totalFrames = (project: Project): number => Math.max(1, project.scenes.reduce((sum, s) => sum + sceneFrames(s), 0));
+/** シーンだけのフレーム数 */
+export const scenesFrames = (project: Pick<Project, 'scenes'>): number => project.scenes.reduce((sum, s) => sum + sceneFrames(s), 0);
+
+/** エンドカードの長さ(フレーム) */
+export const END_CARD_FRAMES = 4 * VIDEO.fps;
+
+/** 動画全体のフレーム数(エンドカードを含む。シーンが無いときも 1 フレームは作る) */
+export const totalFrames = (project: Pick<Project, 'scenes'> & { settings?: Pick<Settings, 'endCard'> }): number =>
+  Math.max(1, scenesFrames(project) + (project.settings?.endCard ? END_CARD_FRAMES : 0));
 
 /** 秒数を "1:05.5" の形で表す */
 export const formatSeconds = (sec: number): string => {

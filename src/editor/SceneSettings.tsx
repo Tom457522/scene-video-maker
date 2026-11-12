@@ -1,4 +1,5 @@
 /** 右列: 選択中のシーンの設定(部品の切り替え・入力項目・秒数) */
+import type { ReactNode } from 'react';
 import { getPart, parts, resolveProps } from '../parts/registry';
 import { MAX_SECONDS, MIN_SECONDS } from '../video/project';
 import { isTooShort, recommendedSeconds } from '../video/reading';
@@ -13,13 +14,15 @@ type Props = {
   onSwitchPart: (partId: string) => void;
   onExportStill: () => void;
   stillBusy: boolean;
+  /** 右列の上のタブ */
+  header: ReactNode;
 };
 
-export const SceneSettings = ({ scene, index, onChange, onSwitchPart, onExportStill, stillBusy }: Props) => {
+export const SceneSettings = ({ scene, index, onChange, onSwitchPart, onExportStill, stillBusy, header }: Props) => {
   if (!scene) {
     return (
       <aside className="col col-right">
-        <div className="col-title">設定</div>
+        {header}
         <p className="muted">左の一覧でシーンを選ぶか、追加してください。</p>
       </aside>
     );
@@ -28,6 +31,7 @@ export const SceneSettings = ({ scene, index, onChange, onSwitchPart, onExportSt
   const resolved = part ? resolveProps(part, scene.props) : null;
   return (
     <aside className="col col-right">
+      {header}
       <div className="col-title row">
         <span>シーン {index + 1} の設定</span>
         <button type="button" className="small-btn" onClick={onExportStill} disabled={stillBusy} title="このシーンの見どころ(70% の時点)を PNG で書き出す">

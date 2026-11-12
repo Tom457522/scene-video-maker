@@ -9,6 +9,8 @@ import { Preview, type PreviewHandle } from './Preview';
 import { SceneList } from './SceneList';
 import { SceneSettings } from './SceneSettings';
 import { TopBar } from './TopBar';
+import { EXPORT_FORMATS, type ExportFormat } from '../remotion/composition-id';
+import { VideoSettings } from './VideoSettings';
 import { HistoryDialog } from './HistoryDialog';
 import { ReplaceDialog } from './ReplaceDialog';
 import { OutlineDialog } from './OutlineDialog';
@@ -81,6 +83,9 @@ export const App = () => {
   /** 開いているダイアログ */
   const [dialog, setDialog] = useState<null | 'history' | 'replace' | 'outline' | 'chapters'>(null);
   const [stillBusy, setStillBusy] = useState(false);
+  /** 右列のタブ: 選んだシーンの設定 / 動画全体の設定 */
+  const [rightTab, setRightTab] = useState<'scene' | 'video'>('scene');
+  const [format, setFormat] = useState<ExportFormat>('720p');
 
   // 元に戻したときにシーンが減っていても、選択がはみ出さないようにする
   const selected = Math.min(selectedRaw, Math.max(0, doc.scenes.length - 1));
@@ -219,6 +224,7 @@ export const App = () => {
 
   const select = (i: number) => {
     setSelected(i);
+    setRightTab('scene');
     const t = timeline[i];
     if (t) preview.current?.seekTo(t.from);
   };
@@ -339,7 +345,7 @@ export const App = () => {
 
   const exportVideo = async () => {
     try {
-      let j = await api.startRender(name, project);
+      let j = await api.startRender(name, project, format);
       setJob(j);
       while (j.status === 'running') {
         await new Promise((r) => window.setTimeout(r, 600));
@@ -414,6 +420,17 @@ export const App = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const tabs = (
+    <div className="tabs">
+      <button type="button" className={rightTab === 'scene' ? 'on' : ''} onClick={() => setRightTab('scene')}>
+        シーン
+      </button>
+      <button type="button" className={rightTab === 'video' ? 'on' : ''} onClick={() => setRightTab('video')}>
+        動画全体
+      </button>
+    </div>
+  );
+
   return (
     <div className="app">
       <TopBar
@@ -448,9 +465,19 @@ export const App = () => {
         toolMenu={[
           { label: '文章からシーンを作る…', onClick: () => setDialog('outline') },
           { label: '一括置換…', onClick: () => setDialog('replace') },
+          { label: '動画全体の設定', onClick: () => setRightTab('video') },
           { label: 'YouTube の章の時刻…', onClick: () => setDialog('chapters') },
         ]}
         onCancelExport={() => void cancelExport()}
+        exportExtra={
+          <select value={format} onChange={(e) => setFormat(e.target.value as ExportFormat)} title="書き出す形式">
+            {Object.entries(EXPORT_FORMATS).map(([id, f]) => (
+              <option key={id} value={id} title={f.detail}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        }
         onTitle={(title) => history.set((d) => ({ ...d, title }), 'title')}
         onSave={() => void save()}
         onExport={() => void exportVideo()}
@@ -467,17 +494,22 @@ export const App = () => {
           onMove={move}
         />
         <Preview ref={preview} project={project} selected={selected} onSelectScene={setSelected} />
-        <SceneSettings
-          scene={doc.scenes[selected]}
-          index={selected}
-          onChange={(s, field) => changeScene(selected, s, `${s.key}:${field}`)}
-          onExportStill={() => void exportStill()}
-          stillBusy={stillBusy}
-          onSwitchPart={(id) => {
-            const part = getPart(id);
-            if (part && doc.scenes[selected]) changeScene(selected, switchPart(doc.scenes[selected], part));
-          }}
-        />
+        {rightTab === 'video' ? (
+          <VideoSettings header={tabs} settings={doc.settings} onChange={(settings) => history.set((d) => ({ ...d, settings }), 'settings')} />
+        ) : (
+          <SceneSettings
+            header={tabs}
+            scene={doc.scenes[selected]}
+            index={selected}
+            onChange={(s, field) => changeScene(selected, s, `${s.key}:${field}`)}
+            onExportStill={() => void exportStill()}
+            stillBusy={stillBusy}
+            onSwitchPart={(id) => {
+              const part = getPart(id);
+              if (part && doc.scenes[selected]) changeScene(selected, switchPart(doc.scenes[selected], part));
+            }}
+          />
+        )}
       </div>
       {dialog === 'history' && (
         <HistoryDialog

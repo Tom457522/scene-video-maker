@@ -1,7 +1,7 @@
 /**
  * プロジェクトを 1 本の動画として描く。エディタのプレビューと MP4 書き出しの両方がこれを使う。
  */
-import { Component as ReactComponent, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Component as ReactComponent, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Sequence, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
 import '../kit/fonts';
 import { loadFontsFor } from '../kit/fonts';
@@ -9,12 +9,16 @@ import { Background, Fill, SceneFrame, Stage } from '../kit/components';
 import { colors, font } from '../kit/theme';
 import { getPart, resolveProps, type PartDef } from '../parts/registry';
 import { LAYOUT_LOG_PREFIX, checkLayout } from './layout-check';
-import { sceneTimeline, type Project, type Scene } from './project';
+import { buildChapters, type Chapter } from './chapters';
+import { ChapterBar, EndCard, TopRight } from './overlays';
+import { END_CARD_FRAMES, defaultSettings, scenesFrames, sceneTimeline, type Project, type Scene, type Settings } from './project';
 
 export type ProjectVideoProps = {
   project: Project;
   /** true のとき、書き出し中に文字のはみ出しを調べて console に結果を出す(npm run stills が使う) */
   checkLayout?: boolean;
+  /** true のとき、右上の章・チャンネル名と下の進み具合を出さない(縦長の動画に埋め込むとき) */
+  embedded?: boolean;
 };
 
 const Notice = ({ title, detail }: { title: string; detail?: string }) => (
@@ -42,6 +46,18 @@ class PartBoundary extends ReactComponent<{ partId: string; children: ReactNode 
   }
 }
 
+/** 章の一覧(各シーンの入力値を既定値で補ってから見出しを拾う) */
+const useChapters = (project: Project): Chapter[] =>
+  useMemo(
+    () =>
+      buildChapters(project, (i) => {
+        const s = project.scenes[i];
+        const part = getPart(s.part);
+        return part ? resolveProps(part, s.props).props : s.props;
+      }),
+    [project],
+  );
+
 /** フォントを読み終えてから、シーンの中の文字のはみ出しを調べて結果を console に出す */
 const useLayoutProbe = (root: React.RefObject<HTMLDivElement | null>, enabled: boolean, sceneIndex: number, text: string) => {
   const [handle] = useState(() => (enabled && getRemotionEnvironment().isRendering ? delayRender('はみ出しの検査') : null));
@@ -57,6 +73,8 @@ const useLayoutProbe = (root: React.RefObject<HTMLDivElement | null>, enabled: b
       .finally(() => continueRender(handle));
   }, [handle, root, sceneIndex, text]);
 };
+
+export { useChapters };
 
 const SceneBody = ({ part, scene, index, check }: { part: PartDef; scene: Scene; index: number; check: boolean }) => {
   const frame = useCurrentFrame();
@@ -89,11 +107,31 @@ const useFontGate = (project: Project) => {
 
 const GlobalBackground = () => <Background frame={useCurrentFrame()} />;
 
-export const ProjectVideo = ({ project, checkLayout: check = false }: ProjectVideoProps) => {
+/** 右上の章・チャンネル名と、下の端の進み具合(エンドカードの間は出さない) */
+const Overlays = ({ settings, chapters, total }: { settings: Settings; chapters: Chapter[]; total: number }) => {
+  const frame = useCurrentFrame();
+  if (frame >= total) return null;
+  return (
+    <>
+      <TopRight frame={frame} chapters={chapters} showChapters={settings.chapters} channelName={settings.channelName} logo={settings.logo} />
+      {settings.chapters && chapters.length > 1 && <ChapterBar frame={frame} chapters={chapters} total={total} />}
+    </>
+  );
+};
+
+const EndCardScene = ({ settings }: { settings: Settings }) => (
+  <EndCard frame={useCurrentFrame()} message={settings.endCardMessage} channelName={settings.channelName} logo={settings.logo} />
+);
+
+export const ProjectVideo = ({ project, checkLayout: check = false, embedded = false }: ProjectVideoProps) => {
   useFontGate(project);
   const timeline = sceneTimeline(project);
+  // 古い形のデータ(settings がない)でも動くようにする
+  const settings = project.settings ?? defaultSettings();
+  const chapters = useChapters(project);
+  const scenesEnd = scenesFrames(project);
   return (
-    <Stage>
+    <Stage theme={settings.theme}>
       <GlobalBackground />
       {project.scenes.length === 0 ? <Notice title="シーンがありません" detail="左の一覧からシーンを追加してください" /> : null}
       {project.scenes.map((scene, i) => {
@@ -110,6 +148,12 @@ export const ProjectVideo = ({ project, checkLayout: check = false }: ProjectVid
           </Sequence>
         );
       })}
+      {settings.endCard && (
+        <Sequence from={scenesEnd} durationInFrames={END_CARD_FRAMES} name="エンドカード">
+          <EndCardScene settings={settings} />
+        </Sequence>
+      )}
+      {!embedded && <Overlays settings={settings} chapters={chapters} total={scenesEnd} />}
     </Stage>
   );
 };

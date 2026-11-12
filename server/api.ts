@@ -4,13 +4,15 @@
  *   GET  /api/projects            プロジェクト名の一覧
  *   GET  /api/projects/:name      読み込み
  *   PUT  /api/projects/:name      保存
- *   POST /api/render              MP4 書き出しを始める { name, project } → { id }
+ *   POST /api/render              MP4 書き出しを始める { name, project, format? } → { id }(format: 720p / 1080p / vertical)
  *   GET  /api/render/:id          書き出しの進み具合
  *   DELETE /api/projects/:name    削除(projects/.trash/ へ移す)
  *   POST /api/projects/:name/rename  名前の変更 { to }
  *   GET  /api/projects/:name/history       前の版の一覧
  *   GET  /api/projects/:name/history/:id   前の版の中身
  *   POST /api/render/:id/cancel   書き出しの中止
+ *   GET  /api/assets              画像の一覧
+ *   POST /api/assets              画像を保存 { name, data(base64) } → { name }
  *   POST /api/still               1 シーンを PNG で書き出す { name, project, scene } → { file }
  *   GET  /api/output/:file        書き出した MP4 のダウンロード
  */
@@ -21,6 +23,8 @@ import type { Plugin } from 'vite';
 import { projectSchema } from '../src/video/project.ts';
 import { OUT_DIR, deleteProject, isValidName, listHistory, listProjects, readHistory, readProject, renameProject, writeProject } from './projects.ts';
 import type { Stage } from './render.ts';
+import { EXPORT_FORMATS, type ExportFormat } from '../src/remotion/composition-id.ts';
+import { MAX_ASSET_BYTES, listAssets, saveAsset } from './assets.ts';
 
 type Job = {
   id: string;
@@ -50,13 +54,13 @@ const send = (res: ServerResponse, status: number, body: unknown) => {
   res.end(JSON.stringify(body));
 };
 
-const readJson = (req: IncomingMessage): Promise<unknown> =>
+const readJson = (req: IncomingMessage, limit = MAX_BODY): Promise<unknown> =>
   new Promise((resolve, reject) => {
     let size = 0;
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY) {
+      if (size > limit) {
         reject(new Error('データが大きすぎます'));
         req.destroy();
         return;
@@ -98,10 +102,10 @@ const timestamp = () => {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 };
 
-const startRender = (name: string, project: unknown): Job => {
+const startRender = (name: string, project: unknown, format: ExportFormat): Job => {
   const parsed = projectSchema.parse(project);
   const id = String(++jobCounter);
-  const file = `${name}-${timestamp()}.mp4`;
+  const file = `${name}${format === '720p' ? '' : `-${format}`}-${timestamp()}.mp4`;
   const job: Job = { id, name, status: 'running', stage: 'bundling', progress: 0 };
   jobs.set(id, job);
   running = job;
@@ -128,7 +132,7 @@ const startRender = (name: string, project: unknown): Job => {
               job.etaSeconds = p > 0.03 ? Math.max(0, Math.round((elapsed / p) * (1 - p))) : undefined;
             }
           },
-          { cancelSignal, isCancelled: () => cancelled },
+          { cancelSignal, isCancelled: () => cancelled, format },
         );
         job.status = 'done';
         job.file = file;
@@ -221,9 +225,10 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
     if (parts.length === 1 && method === 'POST') {
       if (running) return send(res, 409, { error: '別の書き出しが進行中です' });
       try {
-        const body = (await readJson(req)) as { name?: unknown; project?: unknown };
+        const body = (await readJson(req)) as { name?: unknown; project?: unknown; format?: unknown };
         const name = typeof body.name === 'string' && isValidName(body.name) ? body.name : 'video';
-        const job = startRender(name, body.project);
+        const format = typeof body.format === 'string' && body.format in EXPORT_FORMATS ? (body.format as ExportFormat) : '720p';
+        const job = startRender(name, body.project, format);
         return send(res, 202, { job });
       } catch (e) {
         return send(res, 400, { error: errorMessage(e) });
@@ -238,6 +243,21 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
     if (parts.length === 2 && method === 'GET') {
       const job = jobs.get(parts[1]);
       return job ? send(res, 200, { job }) : send(res, 404, { error: '書き出しが見つかりません' });
+    }
+  }
+
+  if (parts[0] === 'assets' && parts.length === 1) {
+    if (method === 'GET') return send(res, 200, { assets: await listAssets() });
+    if (method === 'POST') {
+      try {
+        // base64 は元の大きさの約 4/3 になる
+        const body = (await readJson(req, Math.ceil(MAX_ASSET_BYTES * 1.4) + 1024)) as { name?: unknown; data?: unknown };
+        if (typeof body.name !== 'string' || typeof body.data !== 'string') return send(res, 400, { error: 'name と data(base64)が必要です' });
+        const name = await saveAsset(body.name, Buffer.from(body.data, 'base64'));
+        return send(res, 200, { name });
+      } catch (e) {
+        return send(res, 400, { error: errorMessage(e) });
+      }
     }
   }
 
@@ -282,6 +302,16 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
 export const sceneApi = (): Plugin => ({
   name: 'scene-video-api',
   configureServer(server) {
+    // 起動したら、最初の書き出しを待たせないよう裏で準備しておく(SCENE_NO_PREBUNDLE=1 で止められる)
+    server.httpServer?.once('listening', () => {
+      if (process.env.SCENE_NO_PREBUNDLE) return;
+      setTimeout(() => {
+        import('./render.ts')
+          .then((m) => m.warmUp())
+          .then((ms) => server.config.logger.info(`  書き出しの準備ができました(${Math.round(ms / 1000)} 秒)`))
+          .catch((e: unknown) => server.config.logger.warn(`  書き出しの準備に失敗しました(書き出すときにもう一度試します): ${errorMessage(e)}`));
+      }, 500);
+    });
     server.middlewares.use('/api', (req, res) => {
       handle(req, res).catch((e: unknown) => send(res, 500, { error: errorMessage(e) }));
     });

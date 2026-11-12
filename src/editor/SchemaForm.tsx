@@ -2,8 +2,9 @@
  * 部品の schema(zod)から設定フォームを自動で作る。
  * zod → JSON Schema に変換し、type と meta(title / multiline / options など)を見て入力欄を選ぶ。
  */
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
+import { assetUrl, uploadAsset, useAssets } from './assets';
 
 export type JsonSchema = {
   type?: string | string[];
@@ -16,6 +17,7 @@ export type JsonSchema = {
   marks?: boolean;
   step?: number;
   itemTitle?: string;
+  asset?: 'image';
   minimum?: number;
   maximum?: number;
   maxLength?: number;
@@ -126,6 +128,51 @@ const TextField = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) => {
   );
 };
 
+/** 画像を選ぶ・アップロードする */
+const AssetField = ({ value, onChange }: Omit<FieldProps, 'label' | 'schema'>) => {
+  const assets = useAssets();
+  const v = typeof value === 'string' ? value : '';
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="asset-field">
+      <div className="asset-row">
+        <select value={v} onChange={(e) => onChange(e.target.value)}>
+          <option value="">(なし)</option>
+          {v && !assets.some((a) => a.name === v) && <option value={v}>{v}(見つかりません)</option>}
+          {assets.map((a) => (
+            <option key={a.name} value={a.name}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+        <label className={busy ? 'upload busy' : 'upload'}>
+          {busy ? '追加中…' : '画像を追加'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            hidden
+            disabled={busy}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              setBusy(true);
+              try {
+                onChange(await uploadAsset(file));
+              } catch (err) {
+                window.alert(`画像を追加できませんでした: ${(err as Error).message}`);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        </label>
+      </div>
+      {v && <img className="asset-preview" src={assetUrl(v)} alt="" />}
+    </div>
+  );
+};
+
 const NumberField = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) => (
   <input
     type="number"
@@ -195,10 +242,12 @@ const ObjectFields = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) =>
 const Field = ({ schema, value, onChange, label, bare }: FieldProps & { bare?: boolean }) => {
   let control;
   const t = typeOf(schema);
-  if (schema.enum) {
+  if (schema.asset === 'image') control = <AssetField value={value} onChange={onChange} />;
+  else if (schema.enum || (schema.options && t === 'string')) {
+    const choices = schema.enum ?? Object.keys(schema.options ?? {});
     control = (
-      <select value={String(value)} onChange={(e) => onChange(schema.enum!.find((x) => String(x) === e.target.value))}>
-        {schema.enum.map((x) => (
+      <select value={String(value)} onChange={(e) => onChange(choices.find((x) => String(x) === e.target.value))}>
+        {choices.map((x) => (
           <option key={String(x)} value={String(x)}>
             {schema.options?.[String(x)] ?? String(x)}
           </option>
