@@ -4,3 +4,5 @@ out/
 stills/
 *.tmp
 .DS_Store
+projects/.history/
+projects/.trash/

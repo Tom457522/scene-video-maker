@@ -6,6 +6,11 @@
  *   PUT  /api/projects/:name      保存
  *   POST /api/render              MP4 書き出しを始める { name, project } → { id }
  *   GET  /api/render/:id          書き出しの進み具合
+ *   DELETE /api/projects/:name    削除(projects/.trash/ へ移す)
+ *   POST /api/projects/:name/rename  名前の変更 { to }
+ *   GET  /api/projects/:name/history       前の版の一覧
+ *   GET  /api/projects/:name/history/:id   前の版の中身
+ *   POST /api/render/:id/cancel   書き出しの中止
  *   GET  /api/output/:file        書き出した MP4 のダウンロード
  */
 import { createReadStream, promises as fs } from 'node:fs';
@@ -13,18 +18,23 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 import { projectSchema } from '../src/video/project.ts';
-import { OUT_DIR, isValidName, listProjects, readProject, writeProject } from './projects.ts';
+import { OUT_DIR, deleteProject, isValidName, listHistory, listProjects, readHistory, readProject, renameProject, writeProject } from './projects.ts';
 import type { Stage } from './render.ts';
 
 type Job = {
   id: string;
   name: string;
-  status: 'running' | 'done' | 'error';
+  status: 'running' | 'done' | 'error' | 'cancelled';
   stage: Stage;
   progress: number;
+  /** 書き出し(rendering)の残り時間の見込み(秒) */
+  etaSeconds?: number;
   file?: string;
   error?: string;
 };
+
+/** 中止のための関数(JSON には含めない) */
+const cancellers = new Map<string, () => void>();
 
 const jobs = new Map<string, Job>();
 let running: Job | null = null;
@@ -95,19 +105,45 @@ const startRender = (name: string, project: unknown): Job => {
   jobs.set(id, job);
   running = job;
   void (async () => {
+    let cancelled = false;
+    let renderStarted = 0;
     try {
-      const { renderVideo } = await import('./render.ts');
-      await renderVideo(parsed, path.join(OUT_DIR, file), (stage, p) => {
-        job.stage = stage;
-        job.progress = p;
+      const { renderVideo, makeCancelSignal, RenderCancelled } = await import('./render.ts');
+      const { cancelSignal, cancel } = makeCancelSignal();
+      cancellers.set(id, () => {
+        cancelled = true;
+        cancel();
       });
-      job.status = 'done';
-      job.file = file;
+      try {
+        await renderVideo(
+          parsed,
+          path.join(OUT_DIR, file),
+          (stage, p) => {
+            job.stage = stage;
+            job.progress = p;
+            if (stage === 'rendering') {
+              if (renderStarted === 0) renderStarted = Date.now();
+              const elapsed = (Date.now() - renderStarted) / 1000;
+              job.etaSeconds = p > 0.03 ? Math.max(0, Math.round((elapsed / p) * (1 - p))) : undefined;
+            }
+          },
+          { cancelSignal, isCancelled: () => cancelled },
+        );
+        job.status = 'done';
+        job.file = file;
+      } catch (e) {
+        if (cancelled || e instanceof RenderCancelled) {
+          job.status = 'cancelled';
+          await fs.rm(path.join(OUT_DIR, file), { force: true }).catch(() => undefined);
+        } else throw e;
+      }
     } catch (e) {
       job.status = 'error';
       job.error = errorMessage(e);
       console.error('[書き出し失敗]', e);
     } finally {
+      job.etaSeconds = undefined;
+      cancellers.delete(id);
       running = null;
     }
   })();
@@ -128,6 +164,29 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
 
   if (parts[0] === 'projects') {
     if (parts.length === 1 && method === 'GET') return send(res, 200, { projects: await listProjects() });
+    if (parts.length >= 2 && !isValidName(parts[1])) {
+      return send(res, 400, { error: 'プロジェクト名には日本語・英数字・空白・_ - が使えます(60 文字まで)' });
+    }
+    if (parts.length === 3 && parts[2] === 'history' && method === 'GET') {
+      return send(res, 200, { history: await listHistory(parts[1]) });
+    }
+    if (parts.length === 4 && parts[2] === 'history' && method === 'GET') {
+      try {
+        return send(res, 200, { project: await readHistory(parts[1], parts[3]) });
+      } catch (e) {
+        return send(res, 404, { error: errorMessage(e) });
+      }
+    }
+    if (parts.length === 3 && parts[2] === 'rename' && method === 'POST') {
+      try {
+        const body = (await readJson(req)) as { to?: unknown };
+        if (typeof body.to !== 'string' || !isValidName(body.to)) return send(res, 400, { error: '新しい名前が不正です' });
+        await renameProject(parts[1], body.to);
+        return send(res, 200, { name: body.to });
+      } catch (e) {
+        return send(res, 400, { error: errorMessage(e) });
+      }
+    }
     if (parts.length === 2) {
       const name = parts[1];
       if (!isValidName(name)) return send(res, 400, { error: 'プロジェクト名には日本語・英数字・空白・_ - が使えます(60 文字まで)' });
@@ -137,6 +196,14 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
         } catch (e) {
           const notFound = (e as NodeJS.ErrnoException).code === 'ENOENT';
           return send(res, notFound ? 404 : 400, { error: notFound ? 'プロジェクトが見つかりません' : errorMessage(e) });
+        }
+      }
+      if (method === 'DELETE') {
+        try {
+          await deleteProject(name);
+          return send(res, 200, { deleted: name });
+        } catch (e) {
+          return send(res, 400, { error: errorMessage(e) });
         }
       }
       if (method === 'PUT') {
@@ -160,6 +227,12 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
       } catch (e) {
         return send(res, 400, { error: errorMessage(e) });
       }
+    }
+    if (parts.length === 3 && parts[2] === 'cancel' && method === 'POST') {
+      const cancel = cancellers.get(parts[1]);
+      if (!cancel) return send(res, 404, { error: '進行中の書き出しが見つかりません' });
+      cancel();
+      return send(res, 202, { ok: true });
     }
     if (parts.length === 2 && method === 'GET') {
       const job = jobs.get(parts[1]);

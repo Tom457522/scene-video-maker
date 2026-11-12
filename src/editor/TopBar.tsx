@@ -1,7 +1,11 @@
-/** 上部: プロジェクトの切り替え・名前・合計時間・保存・MP4 書き出し */
+/** 上部: プロジェクトの切り替えとメニュー・名前・合計時間・元に戻す・保存・MP4 書き出し */
+import type { ReactNode } from 'react';
 import { VIDEO } from '../kit/theme';
 import { formatSeconds } from '../video/project';
 import { api, type RenderJob } from './api';
+import { Menu } from './Modal';
+
+type MenuItem = { label: string; onClick: () => void; disabled?: boolean; hint?: string };
 
 type Props = {
   projects: string[];
@@ -14,14 +18,17 @@ type Props = {
   message: string;
   canUndo: boolean;
   canRedo: boolean;
+  projectMenu: MenuItem[];
+  toolMenu: MenuItem[];
+  /** 書き出しボタンの横に出す追加の操作(書き出し形式の選択など) */
+  exportExtra?: ReactNode;
   onUndo: () => void;
   onRedo: () => void;
   onOpen: (name: string) => void;
-  onNew: () => void;
-  onSaveAs: () => void;
   onTitle: (title: string) => void;
   onSave: () => void;
   onExport: () => void;
+  onCancelExport: () => void;
 };
 
 const stageLabel: Record<RenderJob['stage'], string> = {
@@ -30,6 +37,8 @@ const stageLabel: Record<RenderJob['stage'], string> = {
   rendering: '書き出し中',
   done: '完了',
 };
+
+const formatEta = (sec: number) => (sec < 60 ? `残り約 ${sec} 秒` : `残り約 ${Math.ceil(sec / 60)} 分`);
 
 export const TopBar = (p: Props) => {
   const busy = p.job?.status === 'running';
@@ -44,12 +53,8 @@ export const TopBar = (p: Props) => {
           </option>
         ))}
       </select>
-      <button type="button" onClick={p.onNew} title="新しいプロジェクト">
-        新規
-      </button>
-      <button type="button" onClick={p.onSaveAs} title="別の名前で保存">
-        別名で保存
-      </button>
+      <Menu label="プロジェクト" items={p.projectMenu} />
+      <Menu label="ツール" items={p.toolMenu} />
       <input type="text" className="title-input" value={p.title} placeholder="動画のタイトル" maxLength={100} onChange={(e) => p.onTitle(e.target.value)} />
       <div className="total" title="合計時間">
         ⏱ {formatSeconds(p.totalFrames / VIDEO.fps)}
@@ -68,9 +73,16 @@ export const TopBar = (p: Props) => {
         {p.saving ? '保存中…' : p.dirty ? '保存 ●' : '保存済み'}
       </button>
       <div className="export">
-        <button type="button" className="accent" onClick={p.onExport} disabled={busy}>
-          {busy ? '書き出し中…' : 'MP4 書き出し'}
-        </button>
+        {p.exportExtra}
+        {busy ? (
+          <button type="button" onClick={p.onCancelExport} title="書き出しを中止する">
+            中止
+          </button>
+        ) : (
+          <button type="button" className="accent" onClick={p.onExport}>
+            MP4 書き出し
+          </button>
+        )}
         {p.job && (
           <div className={`job job-${p.job.status}`}>
             {p.job.status === 'running' && (
@@ -80,6 +92,7 @@ export const TopBar = (p: Props) => {
                 </div>
                 <span>
                   {stageLabel[p.job.stage]} {Math.round(p.job.progress * 100)}%
+                  {p.job.etaSeconds !== undefined && <span className="eta"> ・ {formatEta(p.job.etaSeconds)}</span>}
                 </span>
               </>
             )}
@@ -88,6 +101,7 @@ export const TopBar = (p: Props) => {
                 ⬇ {p.job.file}
               </a>
             )}
+            {p.job.status === 'cancelled' && <span className="muted">中止しました</span>}
             {p.job.status === 'error' && <span title={p.job.error}>失敗: {p.job.error?.split('\n')[0]}</span>}
           </div>
         )}

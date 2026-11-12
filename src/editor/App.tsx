@@ -9,6 +9,9 @@ import { Preview, type PreviewHandle } from './Preview';
 import { SceneList } from './SceneList';
 import { SceneSettings } from './SceneSettings';
 import { TopBar } from './TopBar';
+import { HistoryDialog } from './HistoryDialog';
+import { ReplaceDialog } from './ReplaceDialog';
+import { replaceAll } from './replace';
 import { fromProject, newKey, newScene, switchPart, toProject, type EditorProject, type EditorScene } from './state';
 
 const LAST_KEY = 'scene-video-maker:last';
@@ -73,6 +76,8 @@ export const App = () => {
   const [job, setJob] = useState<RenderJob | null>(null);
   const [message, setMessage] = useState('');
   const preview = useRef<PreviewHandle>(null);
+  /** 開いているダイアログ */
+  const [dialog, setDialog] = useState<null | 'history' | 'replace'>(null);
 
   // 元に戻したときにシーンが減っていても、選択がはみ出さないようにする
   const selected = Math.min(selectedRaw, Math.max(0, doc.scenes.length - 1));
@@ -251,6 +256,67 @@ export const App = () => {
     setSelected(Math.max(0, scenes.findIndex((s) => s.key === key)));
   };
 
+  const cancelExport = async () => {
+    if (!job) return;
+    try {
+      await api.cancelRender(job.id);
+    } catch (e) {
+      window.alert(`中止できませんでした: ${(e as Error).message}`);
+    }
+  };
+
+  const onServer = projects.includes(name);
+
+  const newProject = () => {
+    if (!confirmDiscard()) return;
+    const n = askName('新しいプロジェクトの名前', '新しい動画');
+    if (!n) return;
+    if (projects.includes(n)) return window.alert('同じ名前のプロジェクトがあります');
+    clearDraft(n);
+    setName(n);
+    reset(emptyProject(n));
+    setSaved('');
+    setSelected(0);
+    safeStorage.set(LAST_KEY, n);
+    preview.current?.seekTo(0);
+  };
+
+  const renameCurrent = async () => {
+    const n = askName('新しい名前', name);
+    if (!n || n === name) return;
+    if (projects.includes(n)) return window.alert('同じ名前のプロジェクトがあります');
+    try {
+      if (onServer) await api.rename(name, n);
+      clearDraft(name);
+      setName(n);
+      safeStorage.set(LAST_KEY, n);
+      setProjects(await api.list());
+      flash(`名前を「${n}」に変えました`);
+    } catch (e) {
+      window.alert(`名前を変えられませんでした: ${(e as Error).message}`);
+    }
+  };
+
+  const deleteCurrent = async () => {
+    if (!window.confirm(`「${name}」を削除しますか?\n(ファイルは projects/.trash/ に移るので、手で戻すこともできます)`)) return;
+    try {
+      if (onServer) await api.remove(name);
+      clearDraft(name);
+      const list = await api.list();
+      setProjects(list);
+      setSaved(snapshot); // 削除したプロジェクトの「保存していない変更」の確認を出さない
+      if (list[0]) await open(list[0]);
+      else {
+        setName('新しい動画');
+        reset(emptyProject(''));
+        setSaved('');
+      }
+      flash(`「${name}」を削除しました`);
+    } catch (e) {
+      window.alert(`削除できませんでした: ${(e as Error).message}`);
+    }
+  };
+
   const exportVideo = async () => {
     try {
       let j = await api.startRender(name, project);
@@ -344,25 +410,23 @@ export const App = () => {
         onUndo={history.undo}
         onRedo={history.redo}
         onOpen={(n) => confirmDiscard() && void open(n)}
-        onNew={() => {
-          if (!confirmDiscard()) return;
-          const n = askName('新しいプロジェクトの名前', '新しい動画');
-          if (!n) return;
-          if (projects.includes(n)) return window.alert('同じ名前のプロジェクトがあります');
-          clearDraft(n);
-          setName(n);
-          reset(emptyProject(n));
-          setSaved('');
-          setSelected(0);
-          safeStorage.set(LAST_KEY, n);
-          preview.current?.seekTo(0);
-        }}
-        onSaveAs={() => {
-          const n = askName('別の名前で保存', `${name} のコピー`);
-          if (!n) return;
-          if (projects.includes(n) && !window.confirm(`「${n}」を上書きしますか?`)) return;
-          void saveAs(n);
-        }}
+        projectMenu={[
+          { label: '新規', onClick: newProject },
+          {
+            label: '別名で保存',
+            onClick: () => {
+              const n = askName('別の名前で保存', `${name} のコピー`);
+              if (!n) return;
+              if (projects.includes(n) && !window.confirm(`「${n}」を上書きしますか?`)) return;
+              void saveAs(n);
+            },
+          },
+          { label: '名前を変更', onClick: () => void renameCurrent() },
+          { label: '保存の履歴から開く…', onClick: () => setDialog('history'), disabled: !onServer, hint: '一度も保存していないプロジェクトには履歴がありません' },
+          { label: '削除', onClick: () => void deleteCurrent() },
+        ]}
+        toolMenu={[{ label: '一括置換…', onClick: () => setDialog('replace') }]}
+        onCancelExport={() => void cancelExport()}
         onTitle={(title) => history.set((d) => ({ ...d, title }), 'title')}
         onSave={() => void save()}
         onExport={() => void exportVideo()}
@@ -388,6 +452,28 @@ export const App = () => {
           }}
         />
       </div>
+      {dialog === 'history' && (
+        <HistoryDialog
+          name={name}
+          onClose={() => setDialog(null)}
+          onOpen={(p, label) => {
+            history.set(fromProject(p));
+            setSelected(0);
+            setDialog(null);
+            flash(`${label} の版を開きました(まだ保存していません)`);
+          }}
+        />
+      )}
+      {dialog === 'replace' && (
+        <ReplaceDialog
+          project={doc}
+          onClose={() => setDialog(null)}
+          onReplace={(f, r) => {
+            history.set((d) => replaceAll(d, f, r));
+            flash(`「${f}」を「${r}」に置き換えました`);
+          }}
+        />
+      )}
     </div>
   );
 };

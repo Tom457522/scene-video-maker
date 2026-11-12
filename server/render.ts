@@ -6,7 +6,9 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { bundle } from '@remotion/bundler';
-import { renderMedia, renderStill, selectComposition, ensureBrowser } from '@remotion/renderer';
+import { renderMedia, renderStill, selectComposition, ensureBrowser, makeCancelSignal } from '@remotion/renderer';
+
+export { makeCancelSignal };
 import { COMPOSITION_ID } from '../src/remotion/composition-id.ts';
 import { sceneTimeline, type Project } from '../src/video/project.ts';
 import { LAYOUT_LOG_PREFIX, type LayoutIssue } from '../src/video/layout-check.ts';
@@ -17,6 +19,13 @@ const SRC = path.join(ROOT, 'src');
 
 /** 環境変数 REMOTION_BROWSER_EXECUTABLE で、ダウンロードせず手元の Chrome / Chromium を使える */
 const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || null;
+
+/** 書き出しを途中で止めたとき */
+export class RenderCancelled extends Error {
+  constructor() {
+    super('書き出しを中止しました');
+  }
+}
 
 export type Stage = 'bundling' | 'browser' | 'rendering' | 'done';
 export type ProgressFn = (stage: Stage, progress: number) => void;
@@ -70,8 +79,15 @@ const prepare = async (project: Project, onProgress: ProgressFn, checkLayout = f
 };
 
 /** MP4(H.264)を書き出す */
-export const renderVideo = async (project: Project, outputLocation: string, onProgress: ProgressFn = () => undefined) => {
+export const renderVideo = async (
+  project: Project,
+  outputLocation: string,
+  onProgress: ProgressFn = () => undefined,
+  opts: { cancelSignal?: ReturnType<typeof makeCancelSignal>['cancelSignal']; isCancelled?: () => boolean } = {},
+) => {
   const { serveUrl, inputProps, composition } = await prepare(project, onProgress);
+  // バンドル中は止められないので、終わった時点で中止の指示があれば書き出しを始めない
+  if (opts.isCancelled?.()) throw new RenderCancelled();
   await fs.mkdir(path.dirname(outputLocation), { recursive: true });
   await renderMedia({
     composition,
@@ -81,6 +97,7 @@ export const renderVideo = async (project: Project, outputLocation: string, onPr
     muted: true,
     outputLocation,
     browserExecutable,
+    cancelSignal: opts.cancelSignal,
     onProgress: ({ progress }) => onProgress('rendering', progress),
   });
   onProgress('done', 1);

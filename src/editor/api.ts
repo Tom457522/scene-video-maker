@@ -4,12 +4,15 @@ import type { Project } from '../video/project';
 export type RenderJob = {
   id: string;
   name: string;
-  status: 'running' | 'done' | 'error';
+  status: 'running' | 'done' | 'error' | 'cancelled';
   stage: 'bundling' | 'browser' | 'rendering' | 'done';
   progress: number;
+  etaSeconds?: number;
   file?: string;
   error?: string;
 };
+
+export type HistoryEntry = { id: string; savedAt: string; scenes: number; title: string };
 
 const call = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(url, {
@@ -32,4 +35,11 @@ export const api = {
     call<{ job: RenderJob }>('/api/render', { method: 'POST', body: JSON.stringify({ name, project }) }).then((r) => r.job),
   renderStatus: (id: string) => call<{ job: RenderJob }>(`/api/render/${enc(id)}`).then((r) => r.job),
   outputUrl: (file: string) => `/api/output/${enc(file)}`,
+  cancelRender: (id: string) => call<{ ok: boolean }>(`/api/render/${enc(id)}/cancel`, { method: 'POST', body: '{}' }),
+  remove: (name: string) => call<{ deleted: string }>(`/api/projects/${enc(name)}`, { method: 'DELETE', body: '{}' }),
+  rename: (from: string, to: string) =>
+    call<{ name: string }>(`/api/projects/${enc(from)}/rename`, { method: 'POST', body: JSON.stringify({ to }) }),
+  history: (name: string) => call<{ history: HistoryEntry[] }>(`/api/projects/${enc(name)}/history`).then((r) => r.history),
+  historyVersion: (name: string, id: string) =>
+    call<{ project: Project }>(`/api/projects/${enc(name)}/history/${enc(id)}`).then((r) => r.project),
 };
