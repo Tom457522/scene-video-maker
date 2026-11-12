@@ -9,6 +9,7 @@ import { bundle } from '@remotion/bundler';
 import { renderMedia, renderStill, selectComposition, ensureBrowser } from '@remotion/renderer';
 import { COMPOSITION_ID } from '../src/remotion/composition-id.ts';
 import { sceneTimeline, type Project } from '../src/video/project.ts';
+import { LAYOUT_LOG_PREFIX, type LayoutIssue } from '../src/video/layout-check.ts';
 import { ROOT } from './projects.ts';
 
 const ENTRY = path.join(ROOT, 'src', 'remotion', 'index.ts');
@@ -60,10 +61,10 @@ const prepareBrowser = async (onProgress?: (p: number) => void) => {
   browserReady = true;
 };
 
-const prepare = async (project: Project, onProgress: ProgressFn) => {
+const prepare = async (project: Project, onProgress: ProgressFn, checkLayout = false) => {
   const serveUrl = await getBundle((p) => onProgress('bundling', p));
   await prepareBrowser((p) => onProgress('browser', p));
-  const inputProps = { project };
+  const inputProps = { project, checkLayout };
   const composition = await selectComposition({ serveUrl, id: COMPOSITION_ID, inputProps, browserExecutable });
   return { serveUrl, inputProps, composition };
 };
@@ -86,25 +87,47 @@ export const renderVideo = async (project: Project, outputLocation: string, onPr
   return outputLocation;
 };
 
-/** 各シーンの見どころ(開始から ratio の時点)を PNG で書き出す */
+export type SceneStill = {
+  file: string;
+  scene: number;
+  part: string;
+  frame: number;
+  /** はみ出しの検査結果(問題がなければ空) */
+  issues: LayoutIssue[];
+};
+
+/** 各シーンの見どころ(開始から ratio の時点)を PNG で書き出し、文字のはみ出しも調べる */
 export const renderSceneStills = async (
   project: Project,
   outDir: string,
   ratio = 0.7,
   onProgress: ProgressFn = () => undefined,
-): Promise<string[]> => {
-  const { serveUrl, inputProps, composition } = await prepare(project, onProgress);
+): Promise<SceneStill[]> => {
+  const { serveUrl, inputProps, composition } = await prepare(project, onProgress, true);
   await fs.mkdir(outDir, { recursive: true });
   const timeline = sceneTimeline(project);
-  const files: string[] = [];
+  const results: SceneStill[] = [];
   for (const [i, scene] of project.scenes.entries()) {
     const { from, durationInFrames } = timeline[i];
     const frame = from + Math.min(durationInFrames - 1, Math.floor(durationInFrames * ratio));
     const file = path.join(outDir, `${String(i + 1).padStart(2, '0')}-${scene.part}.png`);
-    await renderStill({ composition, serveUrl, inputProps, frame, output: file, browserExecutable });
-    files.push(file);
+    let issues: LayoutIssue[] = [];
+    await renderStill({
+      composition,
+      serveUrl,
+      inputProps,
+      frame,
+      output: file,
+      browserExecutable,
+      onBrowserLog: (log) => {
+        if (!log.text.startsWith(LAYOUT_LOG_PREFIX)) return;
+        const data = JSON.parse(log.text.slice(LAYOUT_LOG_PREFIX.length)) as { scene: number; issues: LayoutIssue[] };
+        if (data.scene === i) issues = data.issues;
+      },
+    });
+    results.push({ file, scene: i, part: scene.part, frame, issues });
     onProgress('rendering', (i + 1) / project.scenes.length);
   }
   onProgress('done', 1);
-  return files;
+  return results;
 };

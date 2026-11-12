@@ -67,7 +67,7 @@ npm run dev
 |---|---|
 | `npm run dev` | エディタを起動 |
 | `npm run render -- <プロジェクト>` | エディタを使わずに MP4 を `out/<プロジェクト>.mp4` へ書き出す |
-| `npm run stills -- <プロジェクト> [割合]` | 各シーンの見どころ(既定は開始から 70%)を `stills/<プロジェクト>/` に PNG で書き出す |
+| `npm run stills -- <プロジェクト> [割合]` | 各シーンの見どころ(既定は開始から 70%)を `stills/<プロジェクト>/` に PNG で書き出し、文字のはみ出し(画面の外・枠の外・文字の重なり)を自動で調べる。見つかったら終了コード 1 |
 | `npm run check` | 型チェック(`tsc`)と lint(`eslint`) |
 | `npm run studio` | Remotion Studio で開く(部品の開発用。サンプルが表示されます) |
 

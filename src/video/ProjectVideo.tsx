@@ -1,16 +1,21 @@
 /**
  * プロジェクトを 1 本の動画として描く。エディタのプレビューと MP4 書き出しの両方がこれを使う。
  */
-import { Component as ReactComponent, useEffect, useState, type ReactNode } from 'react';
+import { Component as ReactComponent, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Sequence, continueRender, delayRender, getRemotionEnvironment, useCurrentFrame, useVideoConfig } from 'remotion';
 import '../kit/fonts';
 import { loadFontsFor } from '../kit/fonts';
 import { Background, Fill, SceneFrame, Stage } from '../kit/components';
 import { colors, font } from '../kit/theme';
 import { getPart, resolveProps, type PartDef } from '../parts/registry';
+import { LAYOUT_LOG_PREFIX, checkLayout } from './layout-check';
 import { sceneTimeline, type Project, type Scene } from './project';
 
-export type ProjectVideoProps = { project: Project };
+export type ProjectVideoProps = {
+  project: Project;
+  /** true のとき、書き出し中に文字のはみ出しを調べて console に結果を出す(npm run stills が使う) */
+  checkLayout?: boolean;
+};
 
 const Notice = ({ title, detail }: { title: string; detail?: string }) => (
   <Fill style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 80 }}>
@@ -37,14 +42,34 @@ class PartBoundary extends ReactComponent<{ partId: string; children: ReactNode 
   }
 }
 
-const SceneBody = ({ part, scene }: { part: PartDef; scene: Scene }) => {
+/** フォントを読み終えてから、シーンの中の文字のはみ出しを調べて結果を console に出す */
+const useLayoutProbe = (root: React.RefObject<HTMLDivElement | null>, enabled: boolean, sceneIndex: number, text: string) => {
+  const [handle] = useState(() => (enabled && getRemotionEnvironment().isRendering ? delayRender('はみ出しの検査') : null));
+  useEffect(() => {
+    if (handle === null) return;
+    loadFontsFor(text)
+      .then(() => {
+        if (root.current) {
+          const issues = checkLayout(root.current);
+          console.log(`${LAYOUT_LOG_PREFIX}${JSON.stringify({ scene: sceneIndex, issues })}`);
+        }
+      })
+      .finally(() => continueRender(handle));
+  }, [handle, root, sceneIndex, text]);
+};
+
+const SceneBody = ({ part, scene, index, check }: { part: PartDef; scene: Scene; index: number; check: boolean }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
+  const root = useRef<HTMLDivElement>(null);
   const { props } = resolveProps(part, scene.props);
+  useLayoutProbe(root, check, index, JSON.stringify(props));
   const C = part.Component;
   return (
     <SceneFrame frame={frame} durationInFrames={durationInFrames}>
-      <C props={props} frame={frame} durationInFrames={durationInFrames} fps={fps} />
+      <div ref={root} style={{ position: 'absolute', inset: 0 }}>
+        <C props={props} frame={frame} durationInFrames={durationInFrames} fps={fps} />
+      </div>
     </SceneFrame>
   );
 };
@@ -64,7 +89,7 @@ const useFontGate = (project: Project) => {
 
 const GlobalBackground = () => <Background frame={useCurrentFrame()} />;
 
-export const ProjectVideo = ({ project }: ProjectVideoProps) => {
+export const ProjectVideo = ({ project, checkLayout: check = false }: ProjectVideoProps) => {
   useFontGate(project);
   const timeline = sceneTimeline(project);
   return (
@@ -77,7 +102,7 @@ export const ProjectVideo = ({ project }: ProjectVideoProps) => {
           <Sequence key={i} from={timeline[i].from} durationInFrames={timeline[i].durationInFrames} name={`${i + 1}. ${scene.part}`}>
             {part ? (
               <PartBoundary partId={scene.part}>
-                <SceneBody part={part} scene={scene} />
+                <SceneBody part={part} scene={scene} index={i} check={check} />
               </PartBoundary>
             ) : (
               <Notice title={`部品「${scene.part}」が見つかりません`} detail="src/parts/ にフォルダがあるか確かめてください" />
