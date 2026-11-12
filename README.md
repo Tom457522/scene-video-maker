@@ -185,6 +185,7 @@ npm run dev
 |---|---|
 | `npm run dev` | エディタを起動 |
 | `npm run render -- <プロジェクト>` | エディタを使わずに MP4 を `out/<プロジェクト>.mp4` へ書き出す |
+| `npm run make -- <原稿.md> [オプション]` | 原稿(「文章からシーンを作る」の書き方)から、はみ出しを調べてから MP4 を作る(下の「原稿から 1 コマンドで動画にする」) |
 | `npm run stills -- <プロジェクト> [割合]` | 各シーンの見どころ(既定は 70%)を `stills/<プロジェクト>/` に PNG で書き出し、文字のはみ出し(画面の外・枠の外・文字の重なり)を自動で調べる |
 | `npm run stress [-- <部品名>]` | 全部品を、schema の上限いっぱいの入力・最短の秒数・最小の入力で書き出し、はみ出しを自動で調べる |
 | `npm run visual [-- --update]` | 見本の静止画を `test/visual/` の基準の画像と比べ、見た目が変わっていないかを調べる(`--update` で基準を更新) |
@@ -195,6 +196,41 @@ npm run dev
 | `npm run studio` | Remotion Studio で開く(部品の開発用) |
 
 `<プロジェクト>` には `sample` のような名前か、JSON ファイルのパスを書けます。stills / stress / visual は、問題があると終了コード 1 で終わります。
+
+## 原稿から 1 コマンドで動画にする
+
+エディタを開かずに、原稿の Markdown(「文章からシーンを作る」と同じ書き方)から MP4 を作れます。ほかのアプリや Claude Code のスキルから動画を自動で作るための入口です。
+
+```bash
+npm run make -- 原稿.md --images 図のフォルダ --theme light --quality light --out out/今日の動画.mp4
+```
+
+1. 原稿をシーンに変換します(部品の上限を超えたところは切り詰めて知らせます)。
+2. 画像のシーン `![説明](ファイル名)` のファイルを `--images` のフォルダ(省略すると原稿と同じフォルダ)から `projects/assets/` に入れます。**SVG はそのままは使わず、ブラウザで白い背景の PNG にしてから入れます**(SVG の中のスクリプトは動きません)。
+3. 各シーンの見どころを撮って、文字のはみ出しを調べます。はみ出しがあれば **MP4 を作らずに終了コード 2** で終わるので、原稿の文を短くしてやり直します。
+4. MP4 を書き出します。
+
+| オプション | 内容 |
+|---|---|
+| `--images <フォルダ>` | 画像を探すフォルダ |
+| `--format` | `720p`(既定)/ `1080p` / `vertical`(縦長) |
+| `--quality` | `light` / `normal`(既定)/ `high` |
+| `--theme` | `navy`(既定)/ `light` / `black` / `forest` |
+| `--chapters` | 章の表示を付ける |
+| `--out <ファイル>` | 書き出す MP4(既定: `out/<原稿の名前>.mp4`) |
+| `--project <ファイル>` | 変換したプロジェクト JSON も保存する(`projects/` に置けばエディタで直せる) |
+| `--check-only` | はみ出しを調べるだけ |
+| `--allow-overflow` | はみ出しがあっても書き出す |
+| `--json` | 結果を JSON 1 行で出す(`ok`・`out`・`bytes`・`seconds`・`notes`・`issues`) |
+
+プロジェクト JSON を渡すこともできます(`--theme` などは JSON の設定を上書きします)。
+SVG を PNG にするときは書き出しと同じ Chrome を使います(環境変数 `REMOTION_BROWSER_EXECUTABLE`、なければ Remotion がダウンロードした Chrome Headless Shell。一度も書き出したことがなければ、先に何か 1 本書き出してください)。
+
+原稿の書き方のこつ(はみ出しにくくする):
+- 箇条書きの 1 項目は 25 文字くらいまで、見出しは 20 文字くらいまで。
+- `> 字幕` が出るのは、画像・流れ図・縦のステップ・年表・表・グラフ・コード・アイコン一覧だけです(箇条書き・まとめ・タイトルには出ません)。40 文字くらいまで。
+- `Q:` / `A:` は、ほかの箇条書きと同じ `##` に入れず、専用の `##` を作る(同じ `##` にあると Q&A のシーンだけになる)。
+- 2 列の表は「比較」、3 列以上は「表」になります。用語の一覧は `- [[用語]]:説明` の箇条書きにします。
 
 ## 部品の足し方
 
@@ -216,7 +252,7 @@ src/
   remotion/   Remotion(書き出し・Studio)の入口と書き出しの形式
   editor/     エディタ画面と部品の見本ページ
 server/       プロジェクトの読み書き・履歴・画像・書き出し(Vite の開発サーバーに組み込む API)
-scripts/      render / stills / stress / visual / new-part / start(start.bat から呼ぶ)
+scripts/      render / make / stills / stress / visual / new-part / start(start.bat から呼ぶ)
 test/         単体テストと見た目の基準の画像(test/visual/)
 e2e/          エディタの自動操作テスト(Playwright)
 projects/     プロジェクト JSON と画像(assets/)。.history/ と .trash/ は Git 管理外
