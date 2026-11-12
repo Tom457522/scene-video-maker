@@ -26,7 +26,7 @@ AI に頼むときは、このファイルと `src/kit/`・`src/parts/bullets/in
 5. **ユーザーが触るのは文字・数値・並び順だけ。** 速さやタイミング、色の選択はユーザーに任せず、部品の中で決める(schema に「速さ」や「色」の項目を作らない)。
 6. **短い秒数でも見どころの 70% 地点までに全要素が出そろう**ようにする(`settleBy` と `stagger` を使う)。
 7. **長い文字でもはみ出さない**ようにする。行の高さや枠が決まっている所は `fitFontSizeToBox`(幅と高さの両方に収める)、それ以外は `FitText` / `fitFontSize` を使う。`npm run stress` が schema の上限いっぱいの入力で確かめる。
-8. シーン終わりの退場(左へスライドしながらフェード)・背景・章の表示・チャンネル名は**動画の側で自動で付く**ので、部品の中で作らない。
+8. シーン終わりの退場(切り替え方は動画全体の設定で選ぶ)・背景・章の表示・チャンネル名は**動画の側で自動で付く**ので、部品の中で作らない。
 9. 右上(y 60 より上の右側)は章の表示とチャンネル名に使うので、部品の文字を置かない。
 
 違反の多くは `npm run lint` が検出します(`src/parts/` だけに厳しいルールをかけています)。
@@ -113,6 +113,7 @@ AI に頼むときは、このファイルと `src/kit/`・`src/parts/bullets/in
 | `<Caption text frame start?>` | 画面下の字幕。空文字なら何も出さない |
 | `<FitText text maxWidth max min? maxLines? frame? markStart?>` | 自動縮小・折り返しつきの文。`frame` を渡すと `[[ ]]` のマーカーが `markStart` から引かれる |
 | `<MarkedText text frame? markStart?>` | `[[ ]]` のマーカーだけを付けた文(サイズは親で決める) |
+| `<Icon name size? color? strokeWidth?>` | アイコン(lucide から約 50 個。名前は `ICON_OPTIONS`)。色は親の `color` を受け継ぐ |
 | `<Picture file fit? style?>` | 画像(`projects/assets/` のファイル名)。書き出しでは読み終えるまで待つ。ファイルがなければ代わりの枠を出す |
 | `assetSrc(file)` | 画像の URL(CSS の背景などに使うとき) |
 | `highlightCode(code, lang)` / `tokenColor(kind)` / `parseLineSpec("3,5-6")` / `monoWidthEm(line)` | コードの色分け(`code.ts`)。コード部品を参照 |
@@ -132,6 +133,8 @@ AI に頼むときは、このファイルと `src/kit/`・`src/parts/bullets/in
 | `field.list('項目', ['a', 'b'], { min: 1, max: 6, itemMax: 60 })` | 文字のリスト(追加・削除・並べ替え) |
 | `field.rows('棒', { label: field.text(...), value: field.number(...) }, [既定の行...])` | 複数の入力を持つ行のリスト |
 | `field.image('画像')` | 画像を選ぶ・追加する入力欄(値はファイル名。空文字は画像なし)。`<Picture file={props.xxx} />` で描く |
+| `field.point('丸の位置', { x: 640, y: 360 })` | 画面の上の位置(px)。エディタではプレビューをクリックして決められる。`props.xxx.x` / `props.xxx.y` をそのまま座標に使う |
+| `field.icon('アイコン', 'lightbulb')` | アイコンを見ながら選ぶ入力欄。`<Icon name={props.xxx} size={48} />` で描く |
 
 素の zod も使えますが、その場合は `.default(...)` と `.meta({ title: '項目名' })` を付けてください。
 
@@ -198,6 +201,7 @@ npm run visual                     # 既存の部品の見た目が変わって�
 - [ ] 70% 地点で全要素が出そろっている(秒数を 3 秒にしても)
 - [ ] `npm run stress -- <部品名>` で ✗ が出ない
 - [ ] 色が theme の色(と、その半透明)だけで、4 つのテーマすべてで文字が読みやすい(見本ページでテーマを切り替える)
+- [ ] 既定の入力で、いちばん小さい文字が 20px 以上(エディタの設定欄に「文字の大きさ」が出る)
 - [ ] 同じコマンドを 2 回実行して同じ画像になる(フレームだけで見た目が決まっている)
 - [ ] エディタで入力を空にしたり、項目を最小数・最大数にしたりしても壊れない
 - [ ] MP4 に書き出して、動きが速すぎ・遅すぎないか(30fps で 1 要素の登場は 0.5 秒前後が目安)
