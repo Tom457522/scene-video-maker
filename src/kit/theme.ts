@@ -147,8 +147,10 @@ export const layout = {
   headingTop: 64,
   /** 見出しの下から本文を置き始める位置 */
   contentTop: 196,
-  /** 本文を置ける下端(字幕の帯の上) */
-  contentBottom: 620,
+  /** 字幕(Caption、2 行まで)を出すときに本文を置ける下端 */
+  contentBottom: 568,
+  /** 字幕を出さないときに本文を置ける下端 */
+  contentBottomFull: 664,
   /** 本文の最大幅 */
   contentWidth: 1280 - 96 * 2,
 } as const;

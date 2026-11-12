@@ -13,6 +13,15 @@ export const wrapStyle: CSSProperties = {
   lineBreak: 'strict',
 };
 
+/**
+ * 狭い枠(グラフのラベルなど)用の折り返し。文節ではなく文字単位で折り返すので、行数が見積もりどおりになりやすい。
+ */
+export const wrapStyleTight: CSSProperties = {
+  wordBreak: 'normal',
+  overflowWrap: 'anywhere',
+  lineBreak: 'strict',
+};
+
 /** 画面いっぱいの重ね合わせ用の箱 */
 export const Fill = ({ children, style }: { children?: ReactNode; style?: CSSProperties }) => (
   <div style={{ position: 'absolute', inset: 0, ...style }}>{children}</div>

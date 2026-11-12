@@ -14,7 +14,7 @@ import {
   colors,
   field,
   fitFontSize,
-  fitFontSizeAll,
+  fitFontSizeToBox,
   font,
   layout,
   mix,
@@ -45,12 +45,12 @@ const GAP = 64;
 
 export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
   const top = layout.contentTop;
-  const height = layout.contentBottom + 44 - top;
+  const height = layout.contentBottomFull - top;
   const panelW = (layout.contentWidth - GAP) / 2;
   const rows = Math.max(props.leftItems.length, props.rightItems.length);
   const rowH = Math.min(84, (height - 110) / rows);
   const textW = panelW - 64;
-  const size = fitFontSizeAll([...props.leftItems, ...props.rightItems], { maxWidth: textW, max: Math.min(30, rowH * 0.42), min: 18, maxLines: 2 });
+  const size = fitFontSizeToBox([...props.leftItems, ...props.rightItems], { maxWidth: textW, maxHeight: rowH - 6, max: Math.min(30, Math.floor(rowH * 0.42)), min: 13 });
   const until = settleBy(durationInFrames, 0.5);
   const sides = [
     { title: props.leftTitle, items: props.leftItems, color: colors.coral, x: layout.padX, from: -60 },
@@ -84,7 +84,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
           >
             <div
               style={{
-                fontSize: fitFontSize(side.title, { maxWidth: panelW - 64, max: 34, min: 22 }),
+                fontSize: fitFontSize(side.title, { maxWidth: panelW - 64, max: 34, min: 14, maxLines: 1 }),
                 fontWeight: font.weight.black,
                 color: side.color,
                 paddingBottom: 12,
@@ -102,7 +102,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, height: rowH, opacity: q, transform: `translateY(${mix(q, 12, 0)}px)` }}>
                   <div style={{ flex: 'none', width: 12, height: 12, borderRadius: 3, background: side.color, transform: 'rotate(45deg)' }} />
-                  <FitText text={item} maxWidth={textW} max={size} min={size} frame={frame} markStart={s + T.enter} />
+                  <FitText text={item} maxWidth={textW} max={size} min={size} maxLines={6} frame={frame} markStart={s + T.enter} />
                 </div>
               );
             })}

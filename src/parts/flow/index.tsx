@@ -15,7 +15,7 @@ import {
   colors,
   draw,
   field,
-  fitFontSizeAll,
+  fitFontSizeToBox,
   font,
   layout,
   pingPong,
@@ -56,7 +56,8 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
   const centerY = props.caption.trim() === '' ? 420 : 400;
   const top = centerY - BOX_HEIGHT / 2;
   const textW = boxW - 36;
-  const size = fitFontSizeAll(props.steps, { maxWidth: textW, max: 34, min: 20, maxLines: 3 });
+  // STEP の札(約 34px)を除いた高さに収める
+  const size = fitFontSizeToBox(props.steps, { maxWidth: textW, maxHeight: BOX_HEIGHT - 62, max: 34, min: 13 });
 
   const starts = props.steps.map((_, i) => stagger(i, n, 12, settleBy(durationInFrames, 0.5), 22));
   const xOf = (i: number) => left0 + i * (boxW + ARROW_GAP);
@@ -141,7 +142,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
             }}
           >
             <div style={{ color: accent(i), fontSize: 18, fontWeight: font.weight.black, letterSpacing: '0.14em' }}>STEP {i + 1}</div>
-            <FitText text={step} maxWidth={textW} max={size} min={size} maxLines={3} style={{ textAlign: 'center' }} />
+            <FitText text={step} maxWidth={textW} max={size} min={size} maxLines={6} style={{ textAlign: 'center' }} />
           </div>
         );
       })}

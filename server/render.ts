@@ -20,6 +20,8 @@ const SRC = path.join(ROOT, 'src');
 
 /** 環境変数 REMOTION_BROWSER_EXECUTABLE で、ダウンロードせず手元の Chrome / Chromium を使える */
 const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || null;
+/** Remotion のログはエラーだけ出す(メモリの警告などが毎回出て読みにくいため) */
+const logLevel = 'error' as const;
 
 /** 書き出しを途中で止めたとき */
 export class RenderCancelled extends Error {
@@ -78,6 +80,7 @@ const prepareBrowser = async (onProgress?: (p: number) => void) => {
   if (browserReady) return;
   await ensureBrowser({
     browserExecutable,
+    logLevel,
     onBrowserDownload: () => {
       console.log('Chrome Headless Shell をダウンロードしています(初回のみ)…');
       return { version: null, onProgress: ({ percent }) => onProgress?.(percent) };
@@ -90,7 +93,7 @@ const prepare = async (project: Project, onProgress: ProgressFn, checkLayout = f
   const serveUrl = await getBundle((p) => onProgress('bundling', p));
   await prepareBrowser((p) => onProgress('browser', p));
   const inputProps = { project, checkLayout };
-  const composition = await selectComposition({ serveUrl, id, inputProps, browserExecutable });
+  const composition = await selectComposition({ serveUrl, id, inputProps, browserExecutable, logLevel });
   return { serveUrl, inputProps, composition };
 };
 
@@ -116,6 +119,7 @@ export const renderVideo = async (
     scale: format.scale,
     outputLocation,
     browserExecutable,
+    logLevel,
     cancelSignal: opts.cancelSignal,
     onProgress: ({ progress }) => onProgress('rendering', progress),
   });
@@ -155,6 +159,7 @@ export const renderSceneStills = async (
       frame,
       output: file,
       browserExecutable,
+      logLevel,
       onBrowserLog: (log) => {
         if (!log.text.startsWith(LAYOUT_LOG_PREFIX)) return;
         const data = JSON.parse(log.text.slice(LAYOUT_LOG_PREFIX.length)) as { scene: number; issues: LayoutIssue[] };
@@ -175,7 +180,7 @@ export const renderOneStill = async (project: Project, sceneIndex: number, outpu
   const { serveUrl, inputProps, composition } = await prepare(project, () => undefined);
   await fs.mkdir(path.dirname(output), { recursive: true });
   const frame = t.from + Math.min(t.durationInFrames - 1, Math.floor(t.durationInFrames * ratio));
-  await renderStill({ composition, serveUrl, inputProps, frame, output, browserExecutable });
+  await renderStill({ composition, serveUrl, inputProps, frame, output, browserExecutable, logLevel });
   return output;
 };
 

@@ -61,8 +61,9 @@ export type FitOptions = {
 export const estimateLines = (text: string, fontSize: number, maxWidth: number, letterSpacing = 0): number => {
   const chars = Array.from(stripMarks(text)).length;
   const width = (measureEm(text) + letterSpacing * chars) * fontSize;
-  // 折り返しでは行末に余りが出るので少し多めに見積もる
-  return Math.max(1, Math.ceil((width * 1.06) / maxWidth));
+  // 文節で折り返すと行末に 1 文字ぶんほどの余りが出るので、1 行に使える幅を少し狭く見積もる
+  const usable = Math.max(maxWidth * 0.6, maxWidth - fontSize * 1.2);
+  return Math.max(1, Math.ceil((width * 1.04) / usable));
 };
 
 /**
@@ -80,3 +81,17 @@ export const fitFontSize = (text: string, opts: FitOptions): number => {
 /** 複数の文を同じサイズでそろえたいとき(箇条書きなど)に、全部が収まるサイズを返す */
 export const fitFontSizeAll = (texts: readonly string[], opts: FitOptions): number =>
   texts.reduce((size, t) => Math.min(size, fitFontSize(t, opts)), opts.max);
+
+/**
+ * 幅だけでなく高さにも収まる最大の文字サイズ(2px 刻み)。複数の文を同じサイズにそろえるときに使う。
+ * 箱(行の高さ・枠)が決まっている所では、fitFontSize ではなくこちらを使うと、長い文でも枠からはみ出さない。
+ */
+export const fitFontSizeToBox = (
+  texts: readonly string[],
+  opts: { maxWidth: number; maxHeight: number; max: number; min?: number; lineHeight?: number; letterSpacing?: number },
+): number => {
+  const { maxWidth, maxHeight, max, min = 12, lineHeight = 1.4, letterSpacing = 0 } = opts;
+  const fits = (size: number) => texts.every((t) => estimateLines(t, size, maxWidth, letterSpacing) * size * lineHeight <= maxHeight);
+  for (let size = max; size > min; size -= 2) if (fits(size)) return size;
+  return min;
+};

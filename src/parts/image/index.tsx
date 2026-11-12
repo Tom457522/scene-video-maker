@@ -44,7 +44,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
   const hasHeading = props.heading.trim() !== '';
   const hasCaption = props.caption.trim() !== '';
   const top = hasHeading ? layout.contentTop - 8 : 48;
-  const bottom = hasCaption ? layout.contentBottom - 6 : 672;
+  const bottom = hasCaption ? layout.contentBottom : 672;
   const height = bottom - top;
   const width = Math.min(layout.contentWidth, (height * 16) / 9 + 80);
   const left = (1280 - width) / 2;

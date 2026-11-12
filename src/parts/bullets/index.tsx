@@ -13,7 +13,7 @@ import {
   back,
   colors,
   field,
-  fitFontSizeAll,
+  fitFontSizeToBox,
   font,
   layout,
   mix,
@@ -49,16 +49,16 @@ const BADGE_GAP = 28;
 export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
   const n = props.items.length;
   const top = layout.contentTop;
-  const bottom = layout.contentBottom + 40;
+  const bottom = layout.contentBottomFull;
   const rowHeight = Math.min(112, (bottom - top) / n);
   const textWidth = layout.contentWidth - BADGE - BADGE_GAP;
 
-  // 全項目を同じ文字サイズにそろえる。行の高さに合わせて上限を下げ、長い文は 2 行まで折り返す
-  const size = fitFontSizeAll(props.items, {
+  // 全項目を同じ文字サイズにそろえる。幅と行の高さの両方に収まる大きさにする(長い文は折り返して小さくなる)
+  const size = fitFontSizeToBox(props.items, {
     maxWidth: textWidth,
+    maxHeight: rowHeight - 8,
     max: Math.min(font.size.body, Math.floor(rowHeight * 0.4)),
-    min: 22,
-    maxLines: 2,
+    min: 14,
   });
 
   // 登場のタイミング: 見出しのあとに始め、シーンの 50% までに全項目を出す

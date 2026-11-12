@@ -14,7 +14,7 @@ import {
   colors,
   draw,
   field,
-  fitFontSizeAll,
+  fitFontSizeToBox,
   font,
   layout,
   mix,
@@ -82,10 +82,10 @@ const Check = ({ frame, start }: { frame: number; start: number }) => {
 export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
   const n = props.items.length;
   const panelTop = layout.contentTop - 6;
-  const panelBottom = layout.contentBottom + 50;
+  const panelBottom = layout.contentBottomFull + 4;
   const rowH = Math.min(100, (panelBottom - panelTop - PAD * 2) / n);
   const textW = layout.contentWidth - PAD * 2 - ICON - 24;
-  const size = fitFontSizeAll(props.items, { maxWidth: textW, max: Math.min(font.size.body, rowH * 0.42), min: 22, maxLines: 2 });
+  const size = fitFontSizeToBox(props.items, { maxWidth: textW, maxHeight: rowH - 8, max: Math.min(font.size.body, Math.floor(rowH * 0.42)), min: 14 });
   const panel = back(frame, 4, 20);
   const panelH = rowH * n + PAD * 2;
 

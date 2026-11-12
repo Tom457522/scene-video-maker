@@ -15,14 +15,16 @@ import {
   draw,
   ease,
   field,
-  fitFontSizeAll,
+  fitFontSizeToBox,
+  fitFontSize,
   font,
   layout,
+  measureEm,
   mix,
   progress,
   settleBy,
   stagger,
-  wrapStyle,
+  wrapStyleTight,
   z,
 } from '../../kit';
 
@@ -55,7 +57,6 @@ export const schema = z.object({
 });
 
 const LABEL_W = 250;
-const VALUE_W = 190;
 const GAP = 24;
 
 const decimalsOf = (v: number): number => Math.min(2, (String(v).split('.')[1] ?? '').length);
@@ -64,17 +65,20 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
   const n = props.rows.length;
   const hasCaption = props.caption.trim() !== '';
   const top = layout.contentTop + 8;
-  const bottom = hasCaption ? layout.contentBottom - 10 : layout.contentBottom + 40;
+  const bottom = hasCaption ? layout.contentBottom : layout.contentBottomFull;
   const rowH = Math.min(96, (bottom - top) / n);
-  const barH = Math.max(18, Math.min(44, rowH * 0.52));
+  const barH = Math.max(14, Math.min(44, rowH * 0.42));
   const barX = layout.padX + LABEL_W + GAP;
-  const barMaxW = 1280 - layout.padX - VALUE_W - barX;
   const maxValue = props.max > 0 ? props.max : Math.max(1e-9, ...props.rows.map((r) => r.value));
-  const labelSize = fitFontSizeAll(
+  const labelSize = fitFontSizeToBox(
     props.rows.map((r) => r.label),
-    { maxWidth: LABEL_W, max: Math.min(30, Math.floor(rowH * 0.36)), min: 18, maxLines: 2 },
+    { maxWidth: LABEL_W, maxHeight: rowH - 4, max: Math.min(30, Math.floor(rowH * 0.36)), min: 13, lineHeight: 1.2 },
   );
-  const valueSize = Math.min(36, rowH * 0.46);
+  // 数字の欄の幅は、いちばん長い数字(単位込み)に合わせる。広くなりすぎるときは数字を小さくする
+  const longest = props.rows.map((r) => `${countUp(1, r.value, decimalsOf(r.value))}${props.unit}`).sort((a, b) => b.length - a.length)[0] ?? '';
+  const valueSize = fitFontSize(longest, { maxWidth: 300, max: Math.min(36, Math.floor(rowH * 0.46)), min: 16, maxLines: 1 });
+  const valueW = Math.min(320, measureEm(longest) * valueSize * 0.85 + 30);
+  const barMaxW = 1280 - layout.padX - valueW - barX;
 
   const axis = draw(frame, 6, 16);
   const usedH = rowH * n;
@@ -121,7 +125,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
                 fontSize: labelSize,
                 lineHeight: 1.2,
                 color: colors.text,
-                ...wrapStyle,
+                ...wrapStyleTight,
               }}
             >
               {row.label}

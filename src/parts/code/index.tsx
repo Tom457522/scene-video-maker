@@ -40,7 +40,7 @@ export const schema = z.object({
   code: field.longText(
     'コード',
     "async function getUser(id: string) {\n  // サーバーに問い合わせる\n  const res = await fetch(`/api/users/${id}`);\n  if (!res.ok) throw new Error('見つかりません');\n  return res.json();\n}",
-    { max: 1500, description: '30 行・80 文字くらいまでが読みやすい目安' },
+    { max: 1000, description: '20 行・70 文字くらいまでが読みやすい目安(多いと文字が小さくなる)' },
   ),
   highlight: field.text('強調する行', '3', { max: 40, description: '行番号を「3」「2,5-6」のように書く。空欄なら強調しない' }),
   caption: field.text('字幕', '', { max: 60, marks: true, description: '画面下に出す補足。空欄なら出しません' }),
@@ -56,14 +56,19 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
   const hasHeading = props.heading.trim() !== '';
   const hasCaption = props.caption.trim() !== '';
   const top = hasHeading ? layout.contentTop - 10 : 48;
-  const bottom = hasCaption ? layout.contentBottom - 6 : 672;
+  const bottom = hasCaption ? layout.contentBottom : 672;
   const boxW = layout.contentWidth;
   const boxH = bottom - top;
   const gutterEm = String(n).length * 0.6 + 1.2;
   const maxEm = Math.max(10, ...raw.map(monoWidthEm)) + gutterEm;
-  const size = Math.max(11, Math.min(26, Math.floor((boxW - PAD * 2) / maxEm), Math.floor((boxH - BAR - PAD * 2) / (n * 1.5))));
+  // 幅と高さの両方に収まる大きさ(行が多いと小さくなる)
+  const size = Math.max(8, Math.min(26, Math.floor((boxW - PAD * 2) / maxEm), Math.floor((boxH - BAR - PAD * 2 - 4) / (n * 1.5))));
   const lineH = size * 1.5;
   const marked = parseLineSpec(props.highlight);
+  // 最小の大きさでも入りきらないときは、入る行だけ見せて最後に「残り N 行」と出す
+  const capacity = Math.max(1, Math.floor((boxH - BAR - PAD * 2 - 4) / lineH));
+  const shown = n > capacity ? lines.slice(0, capacity - 1) : lines;
+  const hidden = n - shown.length;
 
   const appear = progress(frame, 2, 14);
   const until = settleBy(durationInFrames, 0.45);
@@ -95,7 +100,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
           <div style={{ marginLeft: 10, fontSize: 16, color: colors.sub, fontWeight: font.weight.regular }}>{LANGUAGES[props.language as Language]}</div>
         </div>
         <div style={{ padding: PAD, fontFamily: font.mono, fontSize: size, lineHeight: `${lineH}px`, fontWeight: 400 }}>
-          {lines.map((tokens, i) => {
+          {shown.map((tokens, i) => {
             const p = progress(frame, stagger(i, n, 8, until, 5), 10);
             const isMarked = marked.has(i + 1);
             const m = isMarked ? progress(frame, markAt, 12) : 0;
@@ -124,6 +129,9 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
               </div>
             );
           })}
+          {hidden > 0 && (
+            <div style={{ height: lineH, color: colors.sub, opacity: progress(frame, until, 10) }}>… 残り {hidden} 行</div>
+          )}
         </div>
       </div>
       <Caption text={props.caption} frame={frame} start={markAt} />
