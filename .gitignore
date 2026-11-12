@@ -6,3 +6,5 @@ stills/
 .DS_Store
 projects/.history/
 projects/.trash/
+test-results/
+playwright-report/

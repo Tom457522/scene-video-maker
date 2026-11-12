@@ -52,6 +52,22 @@ jobs:
         if: runner.os == 'Linux'
         run: npm run visual
 
+      - name: 自動操作テスト用のブラウザを入れる
+        run: npx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
+
+      - name: エディタの自動操作テスト(画面操作と MP4・PNG の書き出し)
+        run: npm run e2e
+
+      - name: 自動操作テストの結果を保存する(失敗したとき)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.os }}-node${{ matrix.node }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+
       - name: 静止画を保存する
         if: always()
         uses: actions/upload-artifact@v4
