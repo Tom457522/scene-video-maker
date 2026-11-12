@@ -1,6 +1,7 @@
 /** 右列: 選択中のシーンの設定(部品の切り替え・入力項目・秒数) */
 import { getPart, parts, resolveProps } from '../parts/registry';
 import { MAX_SECONDS, MIN_SECONDS } from '../video/project';
+import { isTooShort, recommendedSeconds } from '../video/reading';
 import { SchemaForm } from './SchemaForm';
 import type { EditorScene } from './state';
 
@@ -63,6 +64,21 @@ export const SceneSettings = ({ scene, index, onChange, onSwitchPart }: Props) =
             />
             <span className="muted">秒</span>
           </div>
+          {resolved && (
+            <div className={isTooShort(scene.seconds, resolved.props) ? 'hint warn' : 'hint'}>
+              {isTooShort(scene.seconds, resolved.props) ? '⚠ 文字数に対して短めです。' : ''}
+              読み切る目安: 約 {recommendedSeconds(resolved.props)} 秒
+              {scene.seconds !== recommendedSeconds(resolved.props) && (
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => onChange({ ...scene, seconds: Math.min(MAX_SECONDS, recommendedSeconds(resolved.props)) }, 'seconds-auto')}
+                >
+                  目安に合わせる
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
       <hr />

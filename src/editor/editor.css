@@ -143,3 +143,11 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .list-row.card .list-tools { padding-top: 0; }
 .list-row.card .list-body { width: 100%; }
 .list .add { align-self: flex-start; font-size: 12px; }
+.with-mark { display: flex; gap: 4px; align-items: flex-start; }
+.with-mark > input, .with-mark > textarea { flex: 1; min-width: 0; }
+.mark-btn { flex: none; padding: 6px 8px; font-size: 12px; color: var(--accent); }
+.scene-time.short { color: var(--danger); }
+button.link { background: none; border: 0; padding: 0 0 0 8px; color: var(--primary); text-decoration: underline; font-size: inherit; }
+.hint.warn { color: var(--danger); }
+.loop { flex: none; height: 36px; font-size: 12px; white-space: nowrap; }
+.loop.on { background: var(--primary); color: #0b1124; border-color: var(--primary); }

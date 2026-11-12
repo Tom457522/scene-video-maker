@@ -265,10 +265,20 @@ export const App = () => {
     }
   };
 
-  // キーボード: スペースで再生/停止、Ctrl+S で保存、Ctrl+Z で元に戻す、Ctrl+Shift+Z / Ctrl+Y でやり直し
-  const keys = useRef({ save, undo: history.undo, redo: history.redo });
+  // キーボード: スペース 再生/停止、Ctrl+S 保存、Ctrl+Z 元に戻す、Ctrl+Shift+Z / Ctrl+Y やり直し、
+  // ↑↓ シーンを選ぶ、Alt+↑↓ 並べ替え、Ctrl+D 複製、Delete 削除、L シーンを繰り返す(入力欄の外のみ)
+  const sceneKeys = {
+    selectBy: (d: number) => doc.scenes.length > 0 && select(Math.max(0, Math.min(doc.scenes.length - 1, selected + d))),
+    moveBy: (d: number) => {
+      const to = selected + d;
+      if (to >= 0 && to < doc.scenes.length) move(selected, to);
+    },
+    duplicate: () => doc.scenes[selected] && duplicate(selected),
+    remove: () => doc.scenes[selected] && remove(selected),
+  };
+  const keys = useRef({ save, undo: history.undo, redo: history.redo, ...sceneKeys });
   useEffect(() => {
-    keys.current = { save, undo: history.undo, redo: history.redo };
+    keys.current = { save, undo: history.undo, redo: history.redo, ...sceneKeys };
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -292,9 +302,26 @@ export const App = () => {
       }
       const t = e.target as HTMLElement;
       const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable;
-      if (e.key === ' ' && !typing) {
+      if (typing) return;
+      const k2 = keys.current;
+      if (e.key === ' ') {
         e.preventDefault();
         preview.current?.toggle();
+      } else if (mod && k === 'd') {
+        e.preventDefault();
+        k2.duplicate();
+      } else if (e.key === 'Delete') {
+        e.preventDefault();
+        k2.remove();
+      } else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        k2.moveBy(e.key === 'ArrowUp' ? -1 : 1);
+      } else if (!mod && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        k2.selectBy(e.key === 'ArrowUp' ? -1 : 1);
+      } else if (!mod && k === 'l') {
+        e.preventDefault();
+        preview.current?.toggleLoop();
       }
     };
     window.addEventListener('keydown', onKey);

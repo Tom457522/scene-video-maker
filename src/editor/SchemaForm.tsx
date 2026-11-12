@@ -2,7 +2,7 @@
  * 部品の schema(zod)から設定フォームを自動で作る。
  * zod → JSON Schema に変換し、type と meta(title / multiline / options など)を見て入力欄を選ぶ。
  */
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { z } from 'zod';
 
 export type JsonSchema = {
@@ -69,15 +69,61 @@ const Hint = ({ schema, extra }: { schema: JsonSchema; extra?: string }) =>
 
 type FieldProps = { schema: JsonSchema; value: unknown; onChange: (v: unknown) => void; label: string };
 
+/** 選んだ範囲を [[ ]] で囲む(何も選んでいなければ [[]] を入れて中にカーソルを置く) */
+export const wrapMarks = (text: string, from: number, to: number): { text: string; from: number; to: number } => {
+  const a = Math.min(from, to);
+  const b = Math.max(from, to);
+  const inner = text.slice(a, b);
+  // すでに [[ ]] で囲まれていれば外す
+  if (text.slice(a - 2, a) === '[[' && text.slice(b, b + 2) === ']]') {
+    return { text: text.slice(0, a - 2) + inner + text.slice(b + 2), from: a - 2, to: b - 2 };
+  }
+  return { text: `${text.slice(0, a)}[[${inner}]]${text.slice(b)}`, from: a + 2, to: b + 2 };
+};
+
 const TextField = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) => {
   const v = typeof value === 'string' ? value : '';
-  const max = schema.maxLength;
-  const common = {
-    value: v,
-    maxLength: max,
-    onChange: (e: { target: { value: string } }) => onChange(e.target.value),
+  const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const emphasize = () => {
+    const el = ref.current;
+    if (!el) return;
+    const r = wrapMarks(v, el.selectionStart ?? v.length, el.selectionEnd ?? v.length);
+    if (schema.maxLength !== undefined && r.text.length > schema.maxLength) return;
+    onChange(r.text);
+    // 値が反映されたあとで、囲んだ語を選んだ状態に戻す
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(r.from, r.to);
+    });
   };
-  return schema.multiline ? <textarea rows={3} {...common} /> : <input type="text" {...common} />;
+  const common = {
+    ref,
+    value: v,
+    maxLength: schema.maxLength,
+    onChange: (e: { target: { value: string } }) => onChange(e.target.value),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (schema.marks && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        emphasize();
+      }
+    },
+  };
+  const input = schema.multiline ? <textarea rows={3} {...common} /> : <input type="text" {...common} />;
+  if (!schema.marks) return input;
+  return (
+    <div className="with-mark">
+      {input}
+      <button
+        type="button"
+        className="mark-btn"
+        title="選んだ語を [[ ]] で囲んで強調(Ctrl+B)。もう一度押すと外す"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={emphasize}
+      >
+        強調
+      </button>
+    </div>
+  );
 };
 
 const NumberField = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) => (
@@ -97,7 +143,8 @@ const NumberField = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) => 
 
 const ListField = ({ schema, value, onChange, label }: FieldProps) => {
   const list = Array.isArray(value) ? value : [];
-  const item = schema.items ?? {};
+  // [[ ]] の案内はリスト全体に付くので、1 件ずつの入力欄にも引き継ぐ
+  const item: JsonSchema = { ...(schema.items ?? {}), marks: schema.items?.marks ?? schema.marks };
   const min = schema.minItems ?? 0;
   const max = schema.maxItems ?? Infinity;
   const itemTitle = schema.itemTitle ?? '項目';

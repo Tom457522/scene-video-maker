@@ -1,6 +1,7 @@
 /** 左列: シーンの一覧(追加・複製・削除・ドラッグで並べ替え) */
 import { useState } from 'react';
-import { getPart, partErrors, parts } from '../parts/registry';
+import { getPart, partErrors, parts, resolveProps } from '../parts/registry';
+import { isTooShort, recommendedSeconds } from '../video/reading';
 import { VIDEO } from '../kit/theme';
 import { formatSeconds, sceneTimeline } from '../video/project';
 import { sceneSummary, type EditorScene } from './state';
@@ -39,6 +40,8 @@ export const SceneList = ({ scenes, selected, onSelect, onAdd, onDuplicate, onDe
       <ol className="scenes" onDragLeave={(e) => e.currentTarget === e.target && setDropAt(null)}>
         {scenes.map((scene, i) => {
           const part = getPart(scene.part);
+          const props = part ? resolveProps(part, scene.props).props : scene.props;
+          const short = isTooShort(scene.seconds, props);
           return (
             <li
               key={scene.key}
@@ -72,7 +75,13 @@ export const SceneList = ({ scenes, selected, onSelect, onAdd, onDuplicate, onDe
               <div className="scene-main">
                 <div className="scene-part">
                   {part ? part.meta.name : <span className="warn">不明な部品: {scene.part}</span>}
-                  <span className="scene-time">{scene.seconds}秒</span>
+                  <span
+                    className={short ? 'scene-time short' : 'scene-time'}
+                    title={short ? `文字数に対して短めです(読み切る目安: 約 ${recommendedSeconds(props)} 秒)` : undefined}
+                  >
+                    {short ? '⚠ ' : ''}
+                    {scene.seconds}秒
+                  </span>
                 </div>
                 <div className="scene-summary">{sceneSummary(scene) || '(空)'}</div>
                 <div className="scene-at">{formatSeconds(starts[i])} から</div>

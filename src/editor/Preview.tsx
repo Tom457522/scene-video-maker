@@ -6,6 +6,7 @@ import { ProjectVideo } from '../video/ProjectVideo';
 import { formatSeconds, sceneTimeline, totalFrames, type Project } from '../video/project';
 
 export type PreviewHandle = {
+  toggleLoop: () => void;
   seekTo: (frame: number) => void;
   toggle: () => void;
   isPlaying: () => boolean;
@@ -18,11 +19,16 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
   const player = useRef<PlayerRef>(null);
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
+  /** 選んだシーンだけを繰り返し再生する */
+  const [loopScene, setLoopScene] = useState(false);
   const total = totalFrames(project);
   const timeline = useMemo(() => sceneTimeline(project), [project]);
   const inputProps = useMemo(() => ({ project }), [project]);
 
   useImperativeHandle(ref, () => ({
+    toggleLoop: () => {
+      setLoopScene((v) => !v);
+    },
     seekTo: (f) => {
       player.current?.seekTo(f);
       setFrame(f);
@@ -57,6 +63,8 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
     if (frame > total - 1) player.current?.seekTo(total - 1);
   }, [frame, total]);
 
+  const loopRange = loopScene && timeline[selected] ? { from: timeline[selected].from, to: timeline[selected].from + timeline[selected].durationInFrames - 1 } : null;
+
   const current = timeline.findIndex((t) => frame >= t.from && frame < t.from + t.durationInFrames);
 
   return (
@@ -75,6 +83,9 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
           spaceKeyToPlayOrPause={false}
           doubleClickToFullscreen
           acknowledgeRemotionLicense
+          loop={loopRange !== null}
+          inFrame={loopRange?.from ?? null}
+          outFrame={loopRange?.to ?? null}
         />
       </div>
 
@@ -112,12 +123,27 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
             }}
           />
         </div>
+        <button
+          type="button"
+          className={loopScene ? 'loop on' : 'loop'}
+          title="選んでいるシーンだけを繰り返し再生(L)"
+          onClick={() => {
+            const next = !loopScene;
+            setLoopScene(next);
+            if (next && timeline[selected]) {
+              player.current?.seekTo(timeline[selected].from);
+              player.current?.play();
+            }
+          }}
+        >
+          🔁 シーン
+        </button>
         <div className="time">
           {formatSeconds(frame / VIDEO.fps)} / {formatSeconds(total / VIDEO.fps)}
         </div>
       </div>
       <div className="muted small center">
-        クリックで再生/停止・ダブルクリックで全画面・スペースで再生/停止・Ctrl+S で保存・Ctrl+Z で元に戻す
+        スペース: 再生/停止 ・ L: シーンを繰り返す ・ ↑↓: シーンを選ぶ ・ Alt+↑↓: 並べ替え ・ Ctrl+D: 複製 ・ Delete: 削除 ・ Ctrl+S: 保存 ・ Ctrl+Z: 元に戻す
       </div>
     </main>
   );
