@@ -4,12 +4,15 @@ import type { Project } from '../video/project';
 export type RenderJob = {
   id: string;
   name: string;
-  status: 'running' | 'done' | 'error' | 'cancelled';
-  stage: 'bundling' | 'browser' | 'rendering' | 'done';
+  /** 形式・画質などの説明 */
+  label: string;
+  status: 'queued' | 'running' | 'done' | 'error' | 'cancelled';
+  stage: 'waiting' | 'bundling' | 'browser' | 'rendering' | 'done';
   progress: number;
   etaSeconds?: number;
   file?: string;
   error?: string;
+  createdAt: number;
 };
 
 export type HistoryEntry = { id: string; savedAt: string; scenes: number; title: string };
@@ -31,8 +34,9 @@ export const api = {
   load: (name: string) => call<{ project: Project }>(`/api/projects/${enc(name)}`).then((r) => r.project),
   save: (name: string, project: Project) =>
     call<{ project: Project }>(`/api/projects/${enc(name)}`, { method: 'PUT', body: JSON.stringify(project) }).then((r) => r.project),
-  startRender: (name: string, project: Project, format: string) =>
-    call<{ job: RenderJob }>('/api/render', { method: 'POST', body: JSON.stringify({ name, project, format }) }).then((r) => r.job),
+  startRender: (name: string, project: Project, format: string, quality = 'normal', scene = 0) =>
+    call<{ job: RenderJob }>('/api/render', { method: 'POST', body: JSON.stringify({ name, project, format, quality, scene }) }).then((r) => r.job),
+  renderJobs: () => call<{ jobs: RenderJob[] }>('/api/render').then((r) => r.jobs),
   renderStatus: (id: string) => call<{ job: RenderJob }>(`/api/render/${enc(id)}`).then((r) => r.job),
   outputUrl: (file: string) => `/api/output/${enc(file)}`,
   renderStill: (name: string, project: Project, scene: number) =>

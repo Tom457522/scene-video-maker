@@ -9,7 +9,8 @@ import { Preview, type PreviewHandle } from './Preview';
 import { SceneList } from './SceneList';
 import { SceneSettings } from './SceneSettings';
 import { TopBar } from './TopBar';
-import { EXPORT_FORMATS, type ExportFormat } from '../remotion/composition-id';
+import { EXPORT_FORMATS, QUALITIES, type ExportFormat, type Quality } from '../remotion/composition-id';
+import { BatchDialog, ExportsDialog } from './ExportsDialog';
 import { VideoSettings } from './VideoSettings';
 import { HistoryDialog } from './HistoryDialog';
 import { ReplaceDialog } from './ReplaceDialog';
@@ -86,15 +87,16 @@ export const App = () => {
   const [saved, setSaved] = useState<string>('');
   const [selectedRaw, setSelected] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [job, setJob] = useState<RenderJob | null>(null);
+  const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [message, setMessage] = useState('');
   const preview = useRef<PreviewHandle>(null);
   /** 開いているダイアログ */
-  const [dialog, setDialog] = useState<null | 'history' | 'replace' | 'outline' | 'chapters' | 'new' | 'assets'>(null);
+  const [dialog, setDialog] = useState<null | 'history' | 'replace' | 'outline' | 'chapters' | 'new' | 'assets' | 'jobs' | 'batch'>(null);
   const [stillBusy, setStillBusy] = useState(false);
   /** 右列のタブ: 選んだシーンの設定 / 動画全体の設定 */
   const [rightTab, setRightTab] = useState<'scene' | 'video'>('scene');
   const [format, setFormat] = useState<ExportFormat>('720p');
+  const [quality, setQuality] = useState<Quality>('normal');
 
   // 元に戻したときにシーンが減っていても、選択がはみ出さないようにする
   const selected = Math.min(selectedRaw, Math.max(0, doc.scenes.length - 1));
@@ -298,16 +300,48 @@ export const App = () => {
     setSelected(Math.max(0, scenes.findIndex((s) => s.key === key)));
   };
 
-  const cancelExport = async () => {
-    if (!job) return;
+  const onServer = projects.includes(name);
+
+  /** プロジェクトと使っている画像を zip にまとめてダウンロードする */
+  const exportZip = async () => {
     try {
-      await api.cancelRender(job.id);
+      const res = await fetch('/api/archive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, project }) });
+      if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? `エラー (${res.status})`);
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      flash(`${name}.zip を書き出しました(使っている画像も入っています)`);
     } catch (e) {
-      window.alert(`中止できませんでした: ${(e as Error).message}`);
+      window.alert(`zip を書き出せませんでした: ${(e as Error).message}`);
     }
   };
 
-  const onServer = projects.includes(name);
+  const zipInput = useRef<HTMLInputElement>(null);
+  /** zip から読み込んで、そのプロジェクトを開く */
+  const importZip = async (file: File) => {
+    if (!confirmDiscard()) return;
+    try {
+      const data = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(',')[1] ?? '');
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      const base = file.name.replace(/\.zip$/i, '').replace(/[^\p{L}\p{N}_\- ]/gu, '_').trim().slice(0, 60) || 'よみこんだ動画';
+      const res = await fetch('/api/archive/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: base, data }) });
+      const body = (await res.json()) as { name?: string; renamed?: Record<string, string>; error?: string };
+      if (!res.ok || !body.name) throw new Error(body.error ?? `エラー (${res.status})`);
+      setProjects(await api.list());
+      await open(body.name);
+      const renamed = Object.entries(body.renamed ?? {});
+      flash(`「${body.name}」として読み込みました${renamed.length ? `(同じ名前の別の画像があったので ${renamed.map(([a, b]) => `${a} → ${b}`).join('、')} に変えました)` : ''}`);
+    } catch (e) {
+      window.alert(`zip を読み込めませんでした: ${(e as Error).message}`);
+    }
+  };
 
   /** 各シーンの「字幕」から字幕ファイル(SRT)を作ってダウンロードする */
   const exportSrt = () => {
@@ -398,15 +432,23 @@ export const App = () => {
     }
   };
 
+  const refreshJobs = useCallback(() => api.renderJobs().then(setJobs, () => undefined), []);
+  const active = jobs.some((j) => j.status === 'queued' || j.status === 'running');
+  // 書き出し中・順番待ちがある間は、進み具合を取りに行く
+  useEffect(() => {
+    void refreshJobs();
+    if (!active) return;
+    const t = window.setInterval(() => void refreshJobs(), 700);
+    return () => window.clearInterval(t);
+  }, [active, refreshJobs]);
+
+  /** 今の内容を、選んだ形式・画質で順番待ちに入れる(GIF は選んでいるシーンだけ) */
   const exportVideo = async () => {
     try {
-      let j = await api.startRender(name, project, format);
-      setJob(j);
-      while (j.status === 'running') {
-        await new Promise((r) => window.setTimeout(r, 600));
-        j = await api.renderStatus(j.id);
-        setJob(j);
-      }
+      const job = await api.startRender(name, project, format, quality, selected);
+      setJobs((js) => [job, ...js]);
+      flash(`「${job.label}」を順番待ちに入れました`);
+      void refreshJobs();
     } catch (e) {
       window.alert(`書き出しを始められませんでした: ${(e as Error).message}`);
     }
@@ -496,6 +538,17 @@ export const App = () => {
 
   return (
     <div className="app">
+      <input
+        ref={zipInput}
+        type="file"
+        accept=".zip,application/zip"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) void importZip(f);
+        }}
+      />
       <TopBar
         projects={projects}
         name={name}
@@ -503,7 +556,7 @@ export const App = () => {
         totalFrames={totalFrames(project)}
         dirty={dirty}
         saving={saving}
-        job={job}
+        jobs={jobs}
         message={message}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
@@ -523,6 +576,8 @@ export const App = () => {
           },
           { label: '名前を変更', onClick: () => void renameCurrent() },
           { label: '保存の履歴から開く…', onClick: () => setDialog('history'), disabled: !onServer, hint: '一度も保存していないプロジェクトには履歴がありません' },
+          { label: 'zip に書き出す(画像も入れる)', onClick: () => void exportZip(), hint: '別の PC に移したり、人に渡したりするときに' },
+          { label: 'zip から読み込む…', onClick: () => zipInput.current?.click() },
           { label: '削除', onClick: () => void deleteCurrent() },
         ]}
         toolMenu={[
@@ -532,18 +587,31 @@ export const App = () => {
           { label: '動画全体の設定', onClick: () => setRightTab('video') },
           { label: '画像の管理…', onClick: () => setDialog('assets') },
           { label: '部品の見本ページ(新しいタブ)', onClick: () => window.open('/?gallery', '_blank') },
+          { label: 'まとめて書き出し…', onClick: () => setDialog('batch'), hint: '複数のプロジェクト・形式をまとめて順番待ちに入れる' },
+          { label: '書き出しの一覧', onClick: () => setDialog('jobs') },
           { label: 'YouTube の章の時刻…', onClick: () => setDialog('chapters') },
           { label: '字幕ファイル(SRT)を書き出す', onClick: exportSrt, hint: '各シーンの「字幕」に書いた文を、そのシーンの時間に並べます' },
         ]}
-        onCancelExport={() => void cancelExport()}
+        onShowJobs={() => setDialog('jobs')}
         exportExtra={
-          <select value={format} onChange={(e) => setFormat(e.target.value as ExportFormat)} title="書き出す形式">
-            {Object.entries(EXPORT_FORMATS).map(([id, f]) => (
-              <option key={id} value={id} title={f.detail}>
-                {f.label}
-              </option>
-            ))}
-          </select>
+          <>
+            <select value={format} onChange={(e) => setFormat(e.target.value as ExportFormat)} title="書き出す形式">
+              {Object.entries(EXPORT_FORMATS).map(([id, f]) => (
+                <option key={id} value={id} title={f.detail}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            {EXPORT_FORMATS[format].codec !== 'gif' && (
+              <select value={quality} onChange={(e) => setQuality(e.target.value as Quality)} title="画質(ファイルの大きさ)">
+                {Object.entries(QUALITIES).map(([id, q]) => (
+                  <option key={id} value={id} title={q.detail}>
+                    {q.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </>
         }
         onTitle={(title) => history.set((d) => ({ ...d, title }), 'title')}
         onSave={() => void save()}
@@ -605,6 +673,19 @@ export const App = () => {
             }));
             setSelected(mode === 'replace' ? 0 : doc.scenes.length);
             flash(`${scenes.length} シーンを作りました`);
+          }}
+        />
+      )}
+      {dialog === 'jobs' && <ExportsDialog jobs={jobs} onClose={() => setDialog(null)} />}
+      {dialog === 'batch' && (
+        <BatchDialog
+          current={name}
+          currentProject={project}
+          projects={projects}
+          onClose={() => setDialog(null)}
+          onQueued={(n) => {
+            flash(`${n} 件を順番待ちに入れました`);
+            void refreshJobs();
           }}
         />
       )}

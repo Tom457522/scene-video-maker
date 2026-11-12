@@ -9,7 +9,7 @@ import { bundle } from '@remotion/bundler';
 import { renderMedia, renderStill, selectComposition, ensureBrowser, makeCancelSignal } from '@remotion/renderer';
 
 export { makeCancelSignal };
-import { COMPOSITION_ID, EXPORT_FORMATS, type ExportFormat } from '../src/remotion/composition-id.ts';
+import { COMPOSITION_ID, EXPORT_FORMATS, QUALITIES, type ExportFormat, type Quality } from '../src/remotion/composition-id.ts';
 import { sceneTimeline, type Project } from '../src/video/project.ts';
 import { LAYOUT_LOG_PREFIX, type LayoutIssue } from '../src/video/layout-check.ts';
 import { ROOT } from './projects.ts';
@@ -102,9 +102,23 @@ export const renderVideo = async (
   project: Project,
   outputLocation: string,
   onProgress: ProgressFn = () => undefined,
-  opts: { cancelSignal?: ReturnType<typeof makeCancelSignal>['cancelSignal']; isCancelled?: () => boolean; format?: ExportFormat } = {},
+  opts: {
+    cancelSignal?: ReturnType<typeof makeCancelSignal>['cancelSignal'];
+    isCancelled?: () => boolean;
+    format?: ExportFormat;
+    quality?: Quality;
+    /** GIF のように 1 シーンだけを書き出すときのシーンの番号(0 始まり) */
+    scene?: number;
+  } = {},
 ) => {
   const format = EXPORT_FORMATS[opts.format ?? '720p'];
+  const gif = format.codec === 'gif';
+  let frameRange: [number, number] | null = null;
+  if (format.sceneOnly) {
+    const t = sceneTimeline(project)[opts.scene ?? 0];
+    if (!t) throw new Error('書き出すシーンが見つかりません');
+    frameRange = [t.from, t.from + t.durationInFrames - 1];
+  }
   const { serveUrl, inputProps, composition } = await prepare(project, onProgress, false, format.composition);
   // バンドル中は止められないので、終わった時点で中止の指示があれば書き出しを始めない
   if (opts.isCancelled?.()) throw new RenderCancelled();
@@ -113,10 +127,14 @@ export const renderVideo = async (
     composition,
     serveUrl,
     inputProps,
-    codec: 'h264',
+    codec: format.codec,
     muted: true,
     // 1080p は 720p の画面を 1.5 倍の解像度で撮る(文字や図形はベクターなのでぼやけない)
     scale: format.scale,
+    // GIF は画質の指定がなく、2 フレームに 1 枚(15fps)にしてファイルを小さくし、くり返し再生する
+    crf: gif ? null : QUALITIES[opts.quality ?? 'normal'].crf,
+    ...(gif ? { everyNthFrame: 2, numberOfGifLoops: null } : {}),
+    frameRange,
     outputLocation,
     browserExecutable,
     logLevel,

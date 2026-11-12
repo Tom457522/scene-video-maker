@@ -61,11 +61,12 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .history button { padding: 4px 10px; font-size: 16px; line-height: 1; }
 .message { color: var(--primary); font-size: 12px; }
 .export { display: flex; align-items: center; gap: 8px; }
-.job { display: flex; align-items: center; gap: 8px; font-size: 12px; max-width: 320px; }
+.job { display: flex; align-items: center; gap: 8px; font-size: 12px; max-width: 340px; white-space: nowrap; }
+.export .dl { color: var(--accent); font-size: 18px; text-decoration: none; }
 .job a { color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .job-error { color: var(--danger); }
-.bar { width: 120px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
-.bar > div { height: 100%; background: var(--accent); }
+.bar { display: inline-block; width: 90px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar > div, .bar > span { display: block; height: 100%; background: var(--accent); }
 
 .columns { flex: 1; display: grid; grid-template-columns: 320px 1fr 400px; min-height: 0; }
 .col { overflow: auto; padding: 14px; min-height: 0; }
@@ -224,3 +225,9 @@ html:has(.gallery), html:has(.gallery) body, html:has(.gallery) #root { height: 
 .icon-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; padding: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
 .icon-grid button { padding: 6px; display: grid; place-items: center; }
 .icon-grid button.on { border-color: var(--primary); background: var(--panel-2); }
+.job-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.job-row { display: flex; gap: 10px; align-items: center; padding: 8px 10px; background: var(--panel-2); border-radius: 8px; }
+.job-row .job-main { flex: 1; min-width: 0; }
+.job-row a { color: var(--accent); word-break: break-all; }
+.wide-bar { width: 100%; margin-top: 4px; }
+.check-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow: auto; }

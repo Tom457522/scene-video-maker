@@ -4,47 +4,33 @@
  *   GET  /api/projects            プロジェクト名の一覧
  *   GET  /api/projects/:name      読み込み
  *   PUT  /api/projects/:name      保存
- *   POST /api/render              MP4 書き出しを始める { name, project, format? } → { id }(format: 720p / 1080p / vertical)
+ *   GET  /api/render              書き出しの一覧(順番待ち・書き出し中・終わったもの)
+ *   POST /api/render              書き出しを順番待ちに入れる { name, project, format?, quality?, scene? } → { job }
+ *                                 (format: 720p / 1080p / vertical / gif、quality: light / normal / high)
  *   GET  /api/render/:id          書き出しの進み具合
  *   DELETE /api/projects/:name    削除(projects/.trash/ へ移す)
  *   POST /api/projects/:name/rename  名前の変更 { to }
  *   GET  /api/projects/:name/history       前の版の一覧
  *   GET  /api/projects/:name/history/:id   前の版の中身
- *   POST /api/render/:id/cancel   書き出しの中止
+ *   POST /api/render/:id/cancel   書き出しの中止(待っているものは取り消し)
  *   GET  /api/assets[?usage]      画像の一覧(usage を付けると、使っているプロジェクトも返す)
  *   DELETE /api/assets/:name      画像の削除(projects/.trash/ へ移す)
  *   POST /api/assets              画像を保存 { name, data(base64) } → { name }
+ *   POST /api/archive             プロジェクトと使っている画像を zip にまとめる { name, project } → zip
+ *   POST /api/archive/import      zip から読み込む { name, data(base64) } → { name, renamed }
  *   POST /api/still               1 シーンを PNG で書き出す { name, project, scene } → { file }
- *   GET  /api/output/:file        書き出した MP4 のダウンロード
+ *   GET  /api/output/:file        書き出したファイル(MP4 / GIF / PNG)のダウンロード
  */
 import { createReadStream, promises as fs } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { Plugin } from 'vite';
-import { projectSchema } from '../src/video/project.ts';
+import { projectSchema, type Project } from '../src/video/project.ts';
 import { OUT_DIR, deleteProject, isValidName, listHistory, listProjects, readHistory, readProject, renameProject, writeProject } from './projects.ts';
-import type { Stage } from './render.ts';
-import { EXPORT_FORMATS, type ExportFormat } from '../src/remotion/composition-id.ts';
+import { EXPORT_FORMATS, QUALITIES, type ExportFormat, type Quality } from '../src/remotion/composition-id.ts';
+import { JobCancelled, createQueue } from './jobs.ts';
+import { exportArchive, importArchive } from './archive.ts';
 import { MAX_ASSET_BYTES, assetUsage, deleteAsset, isValidAssetName, listAssets, saveAsset } from './assets.ts';
-
-type Job = {
-  id: string;
-  name: string;
-  status: 'running' | 'done' | 'error' | 'cancelled';
-  stage: Stage;
-  progress: number;
-  /** 書き出し(rendering)の残り時間の見込み(秒) */
-  etaSeconds?: number;
-  file?: string;
-  error?: string;
-};
-
-/** 中止のための関数(JSON には含めない) */
-const cancellers = new Map<string, () => void>();
-
-const jobs = new Map<string, Job>();
-let running: Job | null = null;
-let jobCounter = 0;
 
 const MAX_BODY = 5 * 1024 * 1024;
 
@@ -103,58 +89,34 @@ const timestamp = () => {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 };
 
-const startRender = (name: string, project: unknown, format: ExportFormat): Job => {
-  const parsed = projectSchema.parse(project);
-  const id = String(++jobCounter);
-  const file = `${name}${format === '720p' ? '' : `-${format}`}-${timestamp()}.mp4`;
-  const job: Job = { id, name, status: 'running', stage: 'bundling', progress: 0 };
-  jobs.set(id, job);
-  running = job;
-  void (async () => {
-    let cancelled = false;
-    let renderStarted = 0;
-    try {
-      const { renderVideo, makeCancelSignal, RenderCancelled } = await import('./render.ts');
-      const { cancelSignal, cancel } = makeCancelSignal();
-      cancellers.set(id, () => {
-        cancelled = true;
-        cancel();
-      });
-      try {
-        await renderVideo(
-          parsed,
-          path.join(OUT_DIR, file),
-          (stage, p) => {
-            job.stage = stage;
-            job.progress = p;
-            if (stage === 'rendering') {
-              if (renderStarted === 0) renderStarted = Date.now();
-              const elapsed = (Date.now() - renderStarted) / 1000;
-              job.etaSeconds = p > 0.03 ? Math.max(0, Math.round((elapsed / p) * (1 - p))) : undefined;
-            }
-          },
-          { cancelSignal, isCancelled: () => cancelled, format },
-        );
-        job.status = 'done';
-        job.file = file;
-      } catch (e) {
-        if (cancelled || e instanceof RenderCancelled) {
-          job.status = 'cancelled';
-          await fs.rm(path.join(OUT_DIR, file), { force: true }).catch(() => undefined);
-        } else throw e;
-      }
-    } catch (e) {
-      job.status = 'error';
-      job.error = errorMessage(e);
-      console.error('[書き出し失敗]', e);
-    } finally {
-      job.etaSeconds = undefined;
-      cancellers.delete(id);
-      running = null;
-    }
-  })();
-  return job;
-};
+type RenderPayload = { project: Project; format: ExportFormat; quality: Quality; scene: number };
+
+/** 書き出しの順番待ち(1 つずつ順に書き出す) */
+const queue = createQueue<RenderPayload>(async (job, { project, format, quality, scene }, ctx) => {
+  const f = EXPORT_FORMATS[format];
+  const suffix = [format === '720p' ? '' : format, quality === 'normal' || f.codec === 'gif' ? '' : quality, f.sceneOnly ? `scene${scene + 1}` : '']
+    .filter(Boolean)
+    .join('-');
+  const file = `${job.name}${suffix ? `-${suffix}` : ''}-${timestamp()}.${f.ext}`;
+  const { renderVideo, makeCancelSignal, RenderCancelled } = await import('./render.ts');
+  const { cancelSignal, cancel } = makeCancelSignal();
+  ctx.onCancel(cancel);
+  try {
+    await renderVideo(project, path.join(OUT_DIR, file), (stage, p) => ctx.onProgress(stage, p), {
+      cancelSignal,
+      isCancelled: ctx.isCancelled,
+      format,
+      quality,
+      scene,
+    });
+    return file;
+  } catch (e) {
+    await fs.rm(path.join(OUT_DIR, file), { force: true }).catch(() => undefined);
+    if (ctx.isCancelled() || e instanceof RenderCancelled) throw new JobCancelled();
+    console.error('[書き出し失敗]', e);
+    throw e;
+  }
+});
 
 const handle = async (req: IncomingMessage, res: ServerResponse) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -223,26 +185,29 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
   }
 
   if (parts[0] === 'render') {
+    if (parts.length === 1 && method === 'GET') return send(res, 200, { jobs: queue.list() });
     if (parts.length === 1 && method === 'POST') {
-      if (running) return send(res, 409, { error: '別の書き出しが進行中です' });
       try {
-        const body = (await readJson(req)) as { name?: unknown; project?: unknown; format?: unknown };
+        const body = (await readJson(req)) as { name?: unknown; project?: unknown; format?: unknown; quality?: unknown; scene?: unknown };
         const name = typeof body.name === 'string' && isValidName(body.name) ? body.name : 'video';
         const format = typeof body.format === 'string' && body.format in EXPORT_FORMATS ? (body.format as ExportFormat) : '720p';
-        const job = startRender(name, body.project, format);
+        const quality = typeof body.quality === 'string' && body.quality in QUALITIES ? (body.quality as Quality) : 'normal';
+        const project = projectSchema.parse(body.project);
+        const scene = typeof body.scene === 'number' && Number.isInteger(body.scene) ? body.scene : 0;
+        if (EXPORT_FORMATS[format].sceneOnly && (scene < 0 || scene >= project.scenes.length)) return send(res, 400, { error: 'シーンの指定が不正です' });
+        const f = EXPORT_FORMATS[format];
+        const label = [f.label, f.codec === 'gif' ? `シーン ${scene + 1}` : QUALITIES[quality].label].join('・');
+        const job = queue.enqueue(name, label, { project, format, quality, scene });
         return send(res, 202, { job });
       } catch (e) {
         return send(res, 400, { error: errorMessage(e) });
       }
     }
     if (parts.length === 3 && parts[2] === 'cancel' && method === 'POST') {
-      const cancel = cancellers.get(parts[1]);
-      if (!cancel) return send(res, 404, { error: '進行中の書き出しが見つかりません' });
-      cancel();
-      return send(res, 202, { ok: true });
+      return queue.cancel(parts[1]) ? send(res, 202, { ok: true }) : send(res, 404, { error: '待っている・書き出し中の書き出しが見つかりません' });
     }
     if (parts.length === 2 && method === 'GET') {
-      const job = jobs.get(parts[1]);
+      const job = queue.get(parts[1]);
       return job ? send(res, 200, { job }) : send(res, 404, { error: '書き出しが見つかりません' });
     }
   }
@@ -272,6 +237,33 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
     }
   }
 
+  if (parts[0] === 'archive' && parts.length === 1 && method === 'POST') {
+    try {
+      const body = (await readJson(req)) as { name?: unknown; project?: unknown };
+      const name = typeof body.name === 'string' && isValidName(body.name) ? body.name : 'video';
+      const zip = await exportArchive(body.project);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Length', String(zip.length));
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${name}.zip`)}`);
+      res.end(Buffer.from(zip));
+      return;
+    } catch (e) {
+      return send(res, 400, { error: errorMessage(e) });
+    }
+  }
+
+  if (parts[0] === 'archive' && parts[1] === 'import' && parts.length === 2 && method === 'POST') {
+    try {
+      const body = (await readJson(req, 140 * 1024 * 1024)) as { name?: unknown; data?: unknown };
+      if (typeof body.data !== 'string') return send(res, 400, { error: 'data(base64)が必要です' });
+      const result = await importArchive(new Uint8Array(Buffer.from(body.data, 'base64')), typeof body.name === 'string' ? body.name : '');
+      return send(res, 200, result);
+    } catch (e) {
+      return send(res, 400, { error: errorMessage(e) });
+    }
+  }
+
   if (parts[0] === 'still' && parts.length === 1 && method === 'POST') {
     try {
       const body = (await readJson(req)) as { name?: unknown; project?: unknown; scene?: unknown };
@@ -290,8 +282,8 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
 
   if (parts[0] === 'output' && parts.length === 2 && method === 'GET') {
     const file = parts[1];
-    // out/ 直下の .mp4 と .png だけを返す
-    const type = file.endsWith('.mp4') ? 'video/mp4' : file.endsWith('.png') ? 'image/png' : null;
+    // out/ 直下の .mp4 / .gif / .png だけを返す
+    const type = file.endsWith('.mp4') ? 'video/mp4' : file.endsWith('.gif') ? 'image/gif' : file.endsWith('.png') ? 'image/png' : null;
     if (path.basename(file) !== file || !type) return send(res, 400, { error: '不正なファイル名です' });
     const full = path.join(OUT_DIR, file);
     try {

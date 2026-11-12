@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { VIDEO } from '../kit/theme';
 import { formatSeconds } from '../video/project';
 import { api, type RenderJob } from './api';
+import { formatEta } from './ExportsDialog';
 import { Menu } from './Modal';
 
 type MenuItem = { label: string; onClick: () => void; disabled?: boolean; hint?: string };
@@ -14,7 +15,8 @@ type Props = {
   totalFrames: number;
   dirty: boolean;
   saving: boolean;
-  job: RenderJob | null;
+  /** 書き出しの一覧(新しい順) */
+  jobs: RenderJob[];
   message: string;
   canUndo: boolean;
   canRedo: boolean;
@@ -28,20 +30,13 @@ type Props = {
   onTitle: (title: string) => void;
   onSave: () => void;
   onExport: () => void;
-  onCancelExport: () => void;
+  onShowJobs: () => void;
 };
-
-const stageLabel: Record<RenderJob['stage'], string> = {
-  bundling: '準備中(バンドル作成)',
-  browser: '準備中(ブラウザ)',
-  rendering: '書き出し中',
-  done: '完了',
-};
-
-const formatEta = (sec: number) => (sec < 60 ? `残り約 ${sec} 秒` : `残り約 ${Math.ceil(sec / 60)} 分`);
 
 export const TopBar = (p: Props) => {
-  const busy = p.job?.status === 'running';
+  const running = p.jobs.find((j) => j.status === 'running');
+  const waiting = p.jobs.filter((j) => j.status === 'queued').length;
+  const latest = p.jobs[0];
   return (
     <header className="topbar">
       <div className="brand">🎬 解説動画メーカー</div>
@@ -74,36 +69,33 @@ export const TopBar = (p: Props) => {
       </button>
       <div className="export">
         {p.exportExtra}
-        {busy ? (
-          <button type="button" onClick={p.onCancelExport} title="書き出しを中止する">
-            中止
-          </button>
-        ) : (
-          <button type="button" className="accent" onClick={p.onExport}>
-            MP4 書き出し
-          </button>
-        )}
-        {p.job && (
-          <div className={`job job-${p.job.status}`}>
-            {p.job.status === 'running' && (
-              <>
-                <div className="bar">
-                  <div style={{ width: `${Math.round(p.job.progress * 100)}%` }} />
-                </div>
-                <span>
-                  {stageLabel[p.job.stage]} {Math.round(p.job.progress * 100)}%
-                  {p.job.etaSeconds !== undefined && <span className="eta"> ・ {formatEta(p.job.etaSeconds)}</span>}
-                </span>
-              </>
-            )}
-            {p.job.status === 'done' && p.job.file && (
-              <a href={api.outputUrl(p.job.file)} download>
-                ⬇ {p.job.file}
-              </a>
-            )}
-            {p.job.status === 'cancelled' && <span className="muted">中止しました</span>}
-            {p.job.status === 'error' && <span title={p.job.error}>失敗: {p.job.error?.split('\n')[0]}</span>}
-          </div>
+        <button type="button" className="accent" onClick={p.onExport} title="順番待ちに入れて書き出す(書き出し中でも追加できる)">
+          書き出す
+        </button>
+        <button type="button" className="job" onClick={p.onShowJobs} title="書き出しの一覧">
+          {running ? (
+            <>
+              <span className="bar">
+                <span style={{ width: `${Math.round(running.progress * 100)}%` }} />
+              </span>
+              <span>
+                {running.stage === 'rendering' ? '書き出し中' : '準備中'} {Math.round(running.progress * 100)}%
+                {running.etaSeconds !== undefined && <span className="eta"> ・ {formatEta(running.etaSeconds)}</span>}
+                {waiting > 0 && <span className="eta"> ・ あと {waiting} 件</span>}
+              </span>
+            </>
+          ) : latest?.status === 'done' && latest.file ? (
+            <span>✓ 完了(一覧から保存)</span>
+          ) : latest?.status === 'error' ? (
+            <span className="warn">失敗(一覧で確認)</span>
+          ) : (
+            <span className="muted">一覧</span>
+          )}
+        </button>
+        {!running && latest?.status === 'done' && latest.file && (
+          <a className="dl" href={api.outputUrl(latest.file)} download title={latest.file}>
+            ⬇
+          </a>
         )}
       </div>
     </header>
