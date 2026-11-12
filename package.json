@@ -8,6 +8,7 @@
     "dev": "vite",
     "studio": "remotion studio src/remotion/index.ts",
     "render": "tsx scripts/render.ts",
+    "make": "tsx scripts/make.ts",
     "stills": "tsx scripts/stills.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
