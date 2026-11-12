@@ -39,13 +39,13 @@ const load = () => {
     }
     parts.push({ id, meta: meta as PartMeta, schema: schema as z.ZodObject, Component: Component as PartDef['Component'] });
   }
-  parts.sort((a, b) => a.id.localeCompare(b.id));
+  parts.sort((a, b) => (a.meta.order ?? 1000) - (b.meta.order ?? 1000) || a.id.localeCompare(b.id));
   return { parts, errors };
 };
 
 const loaded = load();
 
-/** 正しく読み込めた部品(フォルダ名順) */
+/** 正しく読み込めた部品(meta.order 順、同じならフォルダ名順) */
 export const parts: readonly PartDef[] = loaded.parts;
 /** 読み込めなかった部品とその理由 */
 export const partErrors: readonly PartLoadError[] = loaded.errors;

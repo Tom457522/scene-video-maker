@@ -9,6 +9,8 @@ export type PartMeta = {
   description: string;
   /** シーンを追加したときの秒数 */
   defaultSeconds: number;
+  /** 一覧での並び順(小さいほど上。省略すると最後尾でフォルダ名順) */
+  order?: number;
 };
 
 /** 部品のコンポーネントが受け取るもの */

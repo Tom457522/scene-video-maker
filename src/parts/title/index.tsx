@@ -29,6 +29,7 @@ export const meta: PartMeta = {
   name: 'タイトル',
   description: '動画の表題。文字が 1 文字ずつ跳ねて登場し、下線とサブタイトルが続く。',
   defaultSeconds: 4,
+  order: 10,
 };
 
 export const schema = z.object({

@@ -28,6 +28,7 @@ export const meta: PartMeta = {
   name: '箇条書き',
   description: '見出しと 1〜6 個の要点。[[ ]] で囲んだ語にマーカーが引かれる。',
   defaultSeconds: 6,
+  order: 20,
 };
 
 // 2. schema: 入力項目。kit の field を使うと、フォームの項目名や入力欄の種類が自動で決まる

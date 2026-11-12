@@ -4,7 +4,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { colors, alpha, font, layout, VIDEO } from './theme';
 import { T, drift, ease, exitProgress, mix, progress } from './motion';
-import { fitFontSize, parseMarks } from './text';
+import { estimateLines, fitFontSize, parseMarks } from './text';
 
 /** 日本語を文節で折り返す(Chrome 119 以降)。はみ出しを防ぐため、どこでも折り返せる指定も付ける */
 export const wrapStyle: CSSProperties = {
@@ -158,12 +158,22 @@ export const FitText = ({
 };
 
 /**
+ * 見出しの文字サイズ。まず 1 行に収まるよう縮め、無理なら 2 行で、本文の領域(layout.contentTop)に
+ * かからない大きさにする。
+ */
+export const headingSize = (text: string): number => {
+  const oneLine = fitFontSize(text, { maxWidth: layout.contentWidth, max: font.size.heading, min: 36, maxLines: 1 });
+  if (estimateLines(text, oneLine, layout.contentWidth) <= 1) return oneLine;
+  return fitFontSize(text, { maxWidth: layout.contentWidth, max: 36, min: 26, maxLines: 2 });
+};
+
+/**
  * 見出し: 左からスライドして入り、下線が左から伸びる。画面左上の決まった位置に置く。
  */
 export const Heading = ({ text, frame, start = 0 }: { text: string; frame: number; start?: number }) => {
   const p = progress(frame, start, T.enter);
   const line = progress(frame, start + 8, 16, ease.inOut);
-  const size = fitFontSize(text, { maxWidth: layout.contentWidth, max: font.size.heading, min: 32, maxLines: 2 });
+  const size = headingSize(text);
   return (
     <div
       style={{
