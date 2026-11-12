@@ -133,6 +133,8 @@ export const surface = {
 
 export const font = {
   family: '"Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif',
+  /** コード用の等幅フォント(日本語は Noto Sans JP で表示) */
+  mono: '"JetBrains Mono", "Noto Sans JP", Consolas, monospace',
   weight: { regular: 400, bold: 700, black: 900 },
   /** 文字サイズの目安(px)。はみ出し対策で自動縮小されるときは、これが上限になる */
   size: { hero: 96, heading: 52, body: 38, small: 28, caption: 30 },

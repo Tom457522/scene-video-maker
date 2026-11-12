@@ -7,4 +7,5 @@ export * from './text';
 export * from './fields';
 export * from './components';
 export * from './media';
+export * from './code';
 export type * from './types';

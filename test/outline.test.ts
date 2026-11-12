@@ -51,3 +51,56 @@ test('見出しのない文や、見出しだけの行も扱える', () => {
 test('空の文章ではシーンができない', () => {
   assert.deepEqual(parseOutline('  \n\n').scenes, []);
 });
+
+test('新しい部品の書き方', () => {
+  const r = parseOutline(`## 年表
+2008年: 論文が出る
+2009年: 最初のブロック
+
+## 違い
+| ふつう | ブロックチェーン |
+|---|---|
+| 管理者 1 人 | みんなで管理 |
+| 書き換えやすい | 改ざんしにくい |
+
+## 図
+![ブロックの図](ブロックの図.png)
+
+## コード
+\`\`\`js
+// ## これは見出しではない
+const x = 1;
+\`\`\`
+
+## 質問
+Q: 本当に安全?
+A: 絶対ではありません
+
+## 名言
+>> しくみで信頼をつくる
+-- だれか
+
+## 数字
+!! 約100万件/日 世界の取引の数`);
+  assert.deepEqual(
+    r.scenes.map((s) => s.part),
+    ['timeline', 'compare', 'image', 'code', 'qa', 'quote', 'number'],
+  );
+  assert.deepEqual(r.scenes[0].props.events, [
+    { when: '2008年', what: '論文が出る' },
+    { when: '2009年', what: '最初のブロック' },
+  ]);
+  assert.deepEqual(r.scenes[1].props.leftItems, ['管理者 1 人', '書き換えやすい']);
+  assert.equal(r.scenes[1].props.rightTitle, 'ブロックチェーン');
+  assert.equal(r.scenes[2].props.file, 'ブロックの図.png');
+  assert.equal(r.scenes[3].props.language, 'ts');
+  assert.equal(r.scenes[3].props.code, '// ## これは見出しではない\nconst x = 1;');
+  assert.deepEqual(r.scenes[4].props, { question: '本当に安全?', answer: '絶対ではありません' });
+  assert.deepEqual(r.scenes[5].props, { text: 'しくみで信頼をつくる', source: 'だれか' });
+  assert.deepEqual(r.scenes[6].props, { heading: '数字', prefix: '約', value: 100, unit: '万件/日', label: '世界の取引の数', note: '' });
+});
+
+test('年号で始まっても右が数値なら横棒グラフのまま', () => {
+  const r = parseOutline('## 推移\n2019年: 10\n2020年: 25');
+  assert.equal(r.scenes[0].part, 'bars');
+});

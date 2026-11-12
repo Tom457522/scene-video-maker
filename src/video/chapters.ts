@@ -8,9 +8,9 @@ import { sceneTimeline, type Project } from './project';
 
 export type Chapter = { label: string; from: number; durationInFrames: number; scenes: number[] };
 
-/** シーンの入力値から章の名前を決める(heading → title → 最初の文字の項目) */
+/** シーンの入力値から章の名前を決める(heading → title → question → label → text → 最初の文字の項目) */
 export const chapterLabel = (props: Record<string, unknown>): string => {
-  for (const key of ['heading', 'title']) {
+  for (const key of ['heading', 'title', 'question', 'label', 'text']) {
     const v = props[key];
     if (typeof v === 'string' && v.trim() !== '') return stripMarks(v).trim();
   }

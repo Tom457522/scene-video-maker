@@ -7,12 +7,19 @@
  *   ## 見出し + ラベル: 92%  → bars(数値の後ろは単位)
  *   ## まとめ + - 項目       → summary(見出しが「まとめ」「要点」「ポイント」で始まるとき)
  *   > 字幕                   → そのシーンの字幕(caption がある部品だけ)
+ *   2008年: 出来事(2 行以上)→ timeline(左が数字で始まり、右が文のとき)
+ *   | 左 | 右 |(表)          → compare(1 行目が名前、2 行目以降が項目)
+ *   ![説明](ファイル名)      → image(ファイルは projects/assets/ に入れておく)
+ *   ```言語 〜 ```           → code
+ *   Q: 質問 / A: 答え        → qa
+ *   >> 文 と -- 出典         → quote
+ *   !! 約100万件 説明        → number(数字の前は前置き、直後は単位、空白の後は説明)
  *   [[語]]                   → そのまま強調になる
  */
 
 export type OutlineScene = { part: string; props: Record<string, unknown> };
 
-type Block = { level: 1 | 2; heading: string; lines: string[] };
+type Block = { level: 1 | 2; heading: string; lines: string[]; code?: { lang: string; text: string } };
 
 const RE = {
   h1: /^#\s+(.+)$/,
@@ -20,8 +27,21 @@ const RE = {
   bullet: /^\s*(?:[-*+]\s+|[・●]\s*)(.+)$/,
   numbered: /^\s*\d+\s*[.)．、]\s*(.+)$/,
   bar: /^\s*(?:[-*+]\s+|[・●]\s*)?(.+?)\s*[:：]\s*(-?\d[\d,]*(?:\.\d+)?)\s*([^\d\s][^\s]*)?\s*$/,
-  caption: /^\s*>\s*(.+)$/,
+  caption: /^\s*>(?!>)\s*(.+)$/,
+  quote: /^\s*>>\s*(.+)$/,
+  source: /^\s*(?:--|——|―+|—)\s*(.+)$/,
+  image: /^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$/,
+  table: /^\s*\|(.+)\|\s*$/,
+  tableRule: /^\s*\|[\s:|-]+\|\s*$/,
+  q: /^\s*[QＱ]\s*[:：.．]\s*(.+)$/,
+  a: /^\s*[AＡ]\s*[:：.．]\s*(.+)$/,
+  number: /^\s*!!\s*([^\d\s-]*)\s*(-?\d[\d,]*(?:\.\d+)?)\s*(\S*)\s*(.*)$/,
+  timeline: /^\s*(?:[-*+]\s+|[・●]\s*)?(\d{1,4}[^:：]{0,8}?)\s*[:：]\s*((?=.*[^\d\s.,%])\S.*)$/,
+  fence: /^\s*```\s*(\w*)\s*$/,
 };
+
+/** コードの言語名を、コード部品の選択肢に合わせる */
+const LANG_ALIAS: Record<string, string> = { js: 'ts', javascript: 'ts', typescript: 'ts', tsx: 'ts', jsx: 'ts', py: 'python', sh: 'shell', bash: 'shell', zsh: 'shell', html: 'html', css: 'css', json: 'json' };
 
 const SUMMARY_HEADING = /^(まとめ|要点|ポイント|おさらい)/;
 
@@ -33,8 +53,23 @@ const chunk = <T,>(list: T[], size: number): T[][] => {
 
 const toBlocks = (text: string): Block[] => {
   const blocks: Block[] = [];
+  let fence: { lang: string; lines: string[] } | null = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trimEnd();
+    // ``` で囲まれた中は見出しなどとして読まず、そのままコードにする
+    const f = RE.fence.exec(line);
+    if (fence) {
+      if (f && f[1] === '') {
+        if (blocks.length === 0) blocks.push({ level: 2, heading: '', lines: [] });
+        blocks[blocks.length - 1].code = { lang: fence.lang, text: fence.lines.join('\n') };
+        fence = null;
+      } else fence.lines.push(raw);
+      continue;
+    }
+    if (f) {
+      fence = { lang: f[1].toLowerCase(), lines: [] };
+      continue;
+    }
     const h2 = RE.h2.exec(line);
     const h1 = h2 ? null : RE.h1.exec(line);
     if (h1 || h2) {
@@ -48,7 +83,69 @@ const toBlocks = (text: string): Block[] => {
   return blocks;
 };
 
+/** 新しい部品(コード・画像・表・Q&A・引用・数字・年表)の書き方を先に調べる。当てはまらなければ null */
+const special = (b: Block): OutlineScene[] | null => {
+  const heading = b.heading;
+  const captions = b.lines.map((l) => RE.caption.exec(l)?.[1].trim()).filter((x): x is string => !!x);
+  const caption = captions.join(' ');
+  if (b.code) {
+    return [{ part: 'code', props: { heading, language: LANG_ALIAS[b.code.lang] ?? 'text', code: b.code.text, highlight: '', caption } }];
+  }
+  const img = b.lines.map((l) => RE.image.exec(l)).find((m) => m);
+  if (img) return [{ part: 'image', props: { heading, file: img[2].trim(), caption: img[1].trim() || caption } }];
+
+  const rows = b.lines.filter((l) => RE.table.test(l) && !RE.tableRule.test(l)).map((l) => RE.table.exec(l)![1].split('|').map((c) => c.trim()));
+  if (rows.length >= 2 && rows[0].length >= 2) {
+    const [head, ...body] = rows;
+    return [
+      {
+        part: 'compare',
+        props: {
+          heading,
+          leftTitle: head[0],
+          rightTitle: head[1],
+          leftItems: body.map((r) => r[0]).filter(Boolean),
+          rightItems: body.map((r) => r[1] ?? '').filter(Boolean),
+        },
+      },
+    ];
+  }
+
+  const qs = b.lines.map((l) => RE.q.exec(l)?.[1].trim()).filter((x): x is string => !!x);
+  const as = b.lines.map((l) => RE.a.exec(l)?.[1].trim()).filter((x): x is string => !!x);
+  if (qs.length > 0 && as.length > 0) return qs.map((q, i) => ({ part: 'qa', props: { question: q, answer: as[i] ?? '' } }));
+
+  const quotes = b.lines.map((l) => RE.quote.exec(l)?.[1].trim()).filter((x): x is string => !!x);
+  if (quotes.length > 0) {
+    const source = b.lines.map((l) => RE.source.exec(l)?.[1].trim()).find((x) => x) ?? '';
+    return [{ part: 'quote', props: { text: quotes.join(''), source } }];
+  }
+
+  const num = b.lines.map((l) => RE.number.exec(l)).find((m) => m);
+  if (num) {
+    return [
+      {
+        part: 'number',
+        props: { heading, prefix: num[1], value: Number(num[2].replace(/,/g, '')), unit: num[3], label: num[4].trim() || caption, note: '' },
+      },
+    ];
+  }
+
+  const events = b.lines.map((l) => RE.timeline.exec(l)).filter((m): m is RegExpExecArray => !!m);
+  if (events.length >= 2 && events.length === b.lines.filter((l) => !RE.caption.test(l)).length) {
+    return chunk(events, 6).map((ev, i) => ({
+      part: 'timeline',
+      props: { heading: i === 0 ? heading : `${heading}(続き)`, events: ev.map((m) => ({ when: m[1].trim(), what: m[2].trim() })), caption },
+    }));
+  }
+  return null;
+};
+
 const blockToScenes = (b: Block): OutlineScene[] => {
+  if (b.level === 2) {
+    const sp = special(b);
+    if (sp) return sp;
+  }
   const captions: string[] = [];
   const bullets: string[] = [];
   const numbered: string[] = [];
