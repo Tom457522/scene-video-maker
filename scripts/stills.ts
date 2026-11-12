@@ -4,8 +4,8 @@
  * 部品を作ったり直したりしたら、これで全シーンの見た目をまとめて確かめる。
  */
 import path from 'node:path';
-import { ROOT, readProjectArg } from '../server/projects';
-import { renderSceneStills } from '../server/render';
+import { ROOT, readProjectArg } from '../server/projects.ts';
+import { renderSceneStills } from '../server/render.ts';
 
 const [arg, ratioArg] = process.argv.slice(2);
 if (!arg) {

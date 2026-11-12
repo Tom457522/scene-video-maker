@@ -3,9 +3,10 @@
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { projectSchema, type Project } from '../src/video/project';
+import { fileURLToPath } from 'node:url';
+import { projectSchema, type Project } from '../src/video/project.ts';
 
-export const ROOT = path.resolve(import.meta.dirname, '..');
+export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const PROJECTS_DIR = path.join(ROOT, 'projects');
 export const OUT_DIR = path.join(ROOT, 'out');
 

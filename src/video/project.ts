@@ -2,7 +2,7 @@
  * プロジェクト(= 1 本の動画)の形。projects/<名前>.json に保存する。
  */
 import { z } from 'zod';
-import { VIDEO } from '../kit/theme';
+import { VIDEO } from '../kit/theme.ts';
 
 export const MIN_SECONDS = 1;
 export const MAX_SECONDS = 60;

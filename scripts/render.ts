@@ -3,8 +3,8 @@
  * エディタを使わずに MP4 を out/ へ書き出す。
  */
 import path from 'node:path';
-import { OUT_DIR, readProjectArg } from '../server/projects';
-import { renderVideo } from '../server/render';
+import { OUT_DIR, readProjectArg } from '../server/projects.ts';
+import { renderVideo } from '../server/render.ts';
 
 const arg = process.argv[2];
 if (!arg) {

@@ -7,9 +7,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { bundle } from '@remotion/bundler';
 import { renderMedia, renderStill, selectComposition, ensureBrowser } from '@remotion/renderer';
-import { COMPOSITION_ID } from '../src/remotion/composition-id';
-import { sceneTimeline, type Project } from '../src/video/project';
-import { ROOT } from './projects';
+import { COMPOSITION_ID } from '../src/remotion/composition-id.ts';
+import { sceneTimeline, type Project } from '../src/video/project.ts';
+import { ROOT } from './projects.ts';
 
 const ENTRY = path.join(ROOT, 'src', 'remotion', 'index.ts');
 const SRC = path.join(ROOT, 'src');
