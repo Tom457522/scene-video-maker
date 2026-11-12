@@ -6,6 +6,7 @@ import { useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
 import { assetUrl, uploadAsset, useAssets } from './assets';
 import { cancelPick, startPick, usePick } from './pick';
+import { Icon, ICON_OPTIONS } from '../kit/icons';
 
 export type JsonSchema = {
   type?: string | string[];
@@ -20,6 +21,7 @@ export type JsonSchema = {
   itemTitle?: string;
   asset?: 'image';
   point?: boolean;
+  icon?: boolean;
   minimum?: number;
   maximum?: number;
   maxLength?: number;
@@ -175,6 +177,39 @@ const AssetField = ({ value, onChange }: Omit<FieldProps, 'label' | 'schema'>) =
   );
 };
 
+/** アイコンを選ぶ(field.icon) */
+const IconField = ({ value, onChange }: Omit<FieldProps, 'schema' | 'label'>) => {
+  const [open, setOpen] = useState(false);
+  const v = typeof value === 'string' ? value : '';
+  return (
+    <div className="icon-field">
+      <button type="button" className="icon-current" onClick={() => setOpen((o) => !o)} title="アイコンを選ぶ">
+        <Icon name={v} size={22} />
+        <span>{(ICON_OPTIONS as Record<string, string>)[v] ?? v}</span>
+        <span className="muted">▾</span>
+      </button>
+      {open && (
+        <div className="icon-grid">
+          {Object.entries(ICON_OPTIONS).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={id === v ? 'on' : ''}
+              title={label}
+              onClick={() => {
+                onChange(id);
+                setOpen(false);
+              }}
+            >
+              <Icon name={id} size={22} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /** 画面の上の位置(field.point)。プレビューをクリックして決めるか、数値で打つ */
 const PointField = ({ value, onChange, label }: Omit<FieldProps, 'schema'>) => {
   const pick = usePick();
@@ -272,6 +307,7 @@ const Field = ({ schema, value, onChange, label, bare }: FieldProps & { bare?: b
   const t = typeOf(schema);
   if (schema.asset === 'image') control = <AssetField value={value} onChange={onChange} />;
   else if (schema.point) control = <PointField value={value} onChange={onChange} label={label} />;
+  else if (schema.icon) control = <IconField value={value} onChange={onChange} />;
   else if (schema.enum || (schema.options && t === 'string')) {
     const choices = schema.enum ?? Object.keys(schema.options ?? {});
     control = (

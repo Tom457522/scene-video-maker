@@ -8,4 +8,5 @@ export * from './fields';
 export * from './components';
 export * from './media';
 export * from './code';
+export * from './icons';
 export type * from './types';

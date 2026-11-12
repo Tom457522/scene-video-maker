@@ -24,6 +24,11 @@
       "props": {}
     },
     {
+      "part": "icons",
+      "seconds": 6,
+      "props": {}
+    },
+    {
       "part": "timeline",
       "seconds": 7,
       "props": {}
@@ -34,12 +39,34 @@
       "props": {}
     },
     {
+      "part": "steps",
+      "seconds": 7,
+      "props": {}
+    },
+    {
       "part": "compare",
       "seconds": 7,
       "props": {}
     },
     {
+      "part": "table",
+      "seconds": 7,
+      "props": {
+        "highlight": 2
+      }
+    },
+    {
       "part": "bars",
+      "seconds": 6,
+      "props": {}
+    },
+    {
+      "part": "line",
+      "seconds": 6,
+      "props": {}
+    },
+    {
+      "part": "pie",
       "seconds": 6,
       "props": {}
     },

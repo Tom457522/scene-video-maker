@@ -4,6 +4,7 @@
  * 素の zod(z.string() など)もそのまま使えるが、項目名を出すには .meta({ title }) を付ける。
  */
 import { z } from 'zod';
+import { ICON_OPTIONS } from './icon-names';
 
 export { z };
 
@@ -27,6 +28,8 @@ export type FieldMeta = {
   asset?: 'image';
   /** true なら、プレビューをクリックして位置を決める入力欄にする(field.point) */
   point?: boolean;
+  /** true なら、アイコンを選ぶ入力欄にする(field.icon) */
+  icon?: boolean;
 };
 
 const MARK_HINT = '[[ ]] で囲んだ語にマーカーが引かれます';
@@ -78,6 +81,14 @@ export const field = {
       .object({ x: z.number().min(0).max(1280), y: z.number().min(0).max(720) })
       .default(def)
       .meta({ title, point: true, description: opts.description ?? 'プレビューをクリックして決められます' } satisfies FieldMeta),
+
+  /** アイコン(kit の ICONS の名前)。エディタではアイコンを見ながら選べる */
+  icon: (title: string, def: string) =>
+    z
+      .string()
+      .max(30)
+      .default(def)
+      .meta({ title, icon: true, options: ICON_OPTIONS } satisfies FieldMeta),
 
   /** オン/オフ */
   toggle: (title: string, def: boolean, opts: { description?: string } = {}) =>

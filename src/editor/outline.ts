@@ -8,7 +8,11 @@
  *   ## まとめ + - 項目       → summary(見出しが「まとめ」「要点」「ポイント」で始まるとき)
  *   > 字幕                   → そのシーンの字幕(caption がある部品だけ)
  *   2008年: 出来事(2 行以上)→ timeline(左が数字で始まり、右が文のとき)
- *   | 左 | 右 |(表)          → compare(1 行目が名前、2 行目以降が項目)
+ *   | 左 | 右 |(表)          → compare(2 列。1 行目が名前、2 行目以降が項目)
+ *   | A | B | C |(3 列以上) → table
+ *   ## 〜の割合 + ラベル: 値  → pie(見出しに「割合・内訳・シェア・構成」があるとき)
+ *   ## 〜の推移 + ラベル: 値  → line(見出しに「推移・変化・伸び」があるか、ラベルがすべて年のとき)
+ *   1. 〜 が 6 個以上         → steps(縦のステップ)
  *   ![説明](ファイル名)      → image(ファイルは projects/assets/ に入れておく)
  *   ```言語 〜 ```           → code
  *   Q: 質問 / A: 答え        → qa
@@ -95,6 +99,13 @@ const special = (b: Block): OutlineScene[] | null => {
   if (img) return [{ part: 'image', props: { heading, file: img[2].trim(), caption: img[1].trim() || caption } }];
 
   const rows = b.lines.filter((l) => RE.table.test(l) && !RE.tableRule.test(l)).map((l) => RE.table.exec(l)![1].split('|').map((c) => c.trim()));
+  if (rows.length >= 2 && rows[0].length >= 3) {
+    const [head, ...body] = rows;
+    return chunk(body, 6).map((part, i) => ({
+      part: 'table',
+      props: { heading: i === 0 ? heading : `${heading}(続き)`, columns: head.slice(0, 4), rows: part.map((r) => r.slice(0, head.length).join(' | ')), highlight: 0, caption },
+    }));
+  }
   if (rows.length >= 2 && rows[0].length >= 2) {
     const [head, ...body] = rows;
     return [
@@ -174,12 +185,27 @@ const blockToScenes = (b: Block): OutlineScene[] => {
   if (bars.length > 0 && bullets.length === 0 && numbered.length === 0) {
     const unit = bars.find((r) => r.unit)?.unit ?? '';
     const extra = [caption, ...plain].filter(Boolean).join(' ');
+    // 割合・内訳なら円グラフ、推移なら折れ線グラフ
+    if (/割合|内訳|シェア|構成/.test(heading) && bars.length >= 2 && bars.length <= 6) {
+      return [{ part: 'pie', props: { heading, slices: bars.map(({ label, value }) => ({ label, value })), centerLabel: '', caption: extra } }];
+    }
+    const yearLike = bars.every((r) => /^\d{2,4}(年|年度)?$/.test(r.label));
+    if ((/推移|変化|伸び|増加|減少|移り変わり/.test(heading) || yearLike) && bars.length >= 2 && bars.length <= 10) {
+      return [{ part: 'line', props: { heading, points: bars.map(({ label, value }) => ({ label, value })), unit, caption: extra } }];
+    }
     return chunk(bars, 6).map((rows, i) => ({
       part: 'bars',
       props: { heading: i === 0 ? heading : `${heading}(続き)`, rows: rows.map(({ label, value }) => ({ label, value })), unit, max: 0, caption: extra },
     }));
   }
 
+  if (numbered.length >= 6 && bullets.length === 0 && !SUMMARY_HEADING.test(heading)) {
+    // 手順が多いときは縦に並べる
+    return chunk(numbered, 8).map((steps, i) => ({
+      part: 'steps',
+      props: { heading: i === 0 ? heading : `${heading}(続き)`, steps, caption: [caption, ...plain].filter(Boolean).join(' ') },
+    }));
+  }
   if (numbered.length >= 2 && bullets.length === 0 && !SUMMARY_HEADING.test(heading)) {
     const extra = [caption, ...plain].filter(Boolean).join(' ');
     const groups = numbered.length <= 5 ? [numbered] : chunk(numbered, 4);

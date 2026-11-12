@@ -28,9 +28,13 @@ test('項目が多いと「(続き)」に分ける', () => {
   ]);
 });
 
-test('手順が 6 個以上なら流れ図を分け、1 個だけ余らせない', () => {
-  const r = parseOutline(`## 手順\n${Array.from({ length: 9 }, (_, i) => `${i + 1}. 手順${i + 1}`).join('\n')}`);
-  assert.deepEqual(r.scenes.map((s) => (s.props.steps as string[]).length), [4, 5]);
+test('手順が 6 個以上なら縦のステップにする(9 個以上は分ける)', () => {
+  const r = parseOutline(`## 手順\n${Array.from({ length: 10 }, (_, i) => `${i + 1}. 手順${i + 1}`).join('\n')}`);
+  assert.deepEqual(r.scenes.map((s) => [s.part, (s.props.steps as string[]).length]), [
+    ['steps', 8],
+    ['steps', 2],
+  ]);
+  assert.equal(parseOutline('## 手順\n1. a\n2. b\n3. c').scenes[0].part, 'flow');
 });
 
 test('全角の記号・カンマ付きの数値・・の箇条書きも読める', () => {
@@ -100,7 +104,22 @@ A: 絶対ではありません
   assert.deepEqual(r.scenes[6].props, { heading: '数字', prefix: '約', value: 100, unit: '万件/日', label: '世界の取引の数', note: '' });
 });
 
-test('年号で始まっても右が数値なら横棒グラフのまま', () => {
-  const r = parseOutline('## 推移\n2019年: 10\n2020年: 25');
-  assert.equal(r.scenes[0].part, 'bars');
+test('年号で始まって右が数値なら折れ線、割合なら円グラフ、それ以外は横棒グラフ', () => {
+  assert.equal(parseOutline('## 推移\n2019年: 10\n2020年: 25').scenes[0].part, 'line');
+  assert.equal(parseOutline('## 利用者\n2019: 10\n2020: 25').scenes[0].part, 'line');
+  const pie = parseOutline('## 用途の割合\nお金: 45%\n物流: 25%\nその他: 30%').scenes[0];
+  assert.equal(pie.part, 'pie');
+  assert.deepEqual(pie.props.slices, [
+    { label: 'お金', value: 45 },
+    { label: '物流', value: 25 },
+    { label: 'その他', value: 30 },
+  ]);
+  assert.equal(parseOutline('## 人気\nA: 10\nB: 25').scenes[0].part, 'bars');
+});
+
+test('3 列以上の表は表の部品にする', () => {
+  const r = parseOutline('## 比較\n| 名前 | 年 | 特徴 |\n|---|---|---|\n| A | 2009 | 最初 |\n| B | 2015 | 速い |');
+  assert.equal(r.scenes[0].part, 'table');
+  assert.deepEqual(r.scenes[0].props.columns, ['名前', '年', '特徴']);
+  assert.deepEqual(r.scenes[0].props.rows, ['A | 2009 | 最初', 'B | 2015 | 速い']);
 });
