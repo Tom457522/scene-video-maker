@@ -1,0 +1,79 @@
+/**
+ * __ID__: __NAME__。
+ * (ここに、どんな場面で使う部品かを 1〜2 行で書く。作り方は PARTS_GUIDE.md、見本は src/parts/bullets/index.tsx)
+ */
+import {
+  type PartComponent,
+  type PartMeta,
+  Caption,
+  Fill,
+  FitText,
+  Heading,
+  T,
+  alpha,
+  colors,
+  field,
+  fitFontSizeToBox,
+  layout,
+  mix,
+  progress,
+  settleBy,
+  surface,
+  z,
+} from '../../kit';
+
+// 1. meta: 一覧に出す名前・説明・既定の秒数・並び順
+export const meta: PartMeta = {
+  name: '__NAME__',
+  description: '(この部品の説明を書く)',
+  defaultSeconds: 5,
+  order: 100,
+};
+
+// 2. schema: 入力項目。kit の field を使い、すべてに既定値を付ける(フォームは自動でできる)
+export const schema = z.object({
+  heading: field.text('見出し', '__NAME__', { max: 40, marks: true }),
+  body: field.longText('本文', 'ここに本文が入ります。[[強調]]もできます。', { max: 120, marks: true }),
+  caption: field.text('字幕', '', { max: 60, marks: true, description: '画面下に出す補足。空欄なら出しません' }),
+});
+
+// 3. Component: props と frame だけから見た目を決める(タイマーや CSS の transition は使わない)
+export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
+  const hasCaption = props.caption.trim() !== '';
+  const top = layout.contentTop;
+  const bottom = hasCaption ? layout.contentBottom : layout.contentBottomFull;
+  const pad = 40;
+  const textW = layout.contentWidth - pad * 2;
+  // 幅と高さの両方に収まる文字サイズ(長い文は自動で小さくなる)
+  const size = fitFontSizeToBox([props.body], { maxWidth: textW, maxHeight: bottom - top - pad * 2, max: 40, min: 16 });
+
+  // 登場のタイミング: シーンの長さから決める(短いシーンでも 70% 地点までに出そろう)
+  const start = 10;
+  const settled = settleBy(durationInFrames, 0.5);
+  const p = progress(frame, start, T.enter);
+
+  return (
+    <Fill>
+      <Heading text={props.heading} frame={frame} />
+      <div
+        style={{
+          position: 'absolute',
+          left: layout.padX,
+          top,
+          width: layout.contentWidth,
+          height: bottom - top,
+          boxSizing: 'border-box',
+          padding: pad,
+          borderRadius: 20,
+          background: surface.fill,
+          border: `2px solid ${alpha(colors.teal, 0.5)}`,
+          opacity: p,
+          transform: `translateY(${mix(p, 24, 0)}px)`,
+        }}
+      >
+        <FitText text={props.body} maxWidth={textW} max={size} min={size} maxLines={10} frame={frame} markStart={settled} />
+      </div>
+      <Caption text={props.caption} frame={frame} start={settled} />
+    </Fill>
+  );
+};

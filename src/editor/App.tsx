@@ -466,6 +466,7 @@ export const App = () => {
           { label: '文章からシーンを作る…', onClick: () => setDialog('outline') },
           { label: '一括置換…', onClick: () => setDialog('replace') },
           { label: '動画全体の設定', onClick: () => setRightTab('video') },
+          { label: '部品の見本ページ(新しいタブ)', onClick: () => window.open('/?gallery', '_blank') },
           { label: 'YouTube の章の時刻…', onClick: () => setDialog('chapters') },
         ]}
         onCancelExport={() => void cancelExport()}

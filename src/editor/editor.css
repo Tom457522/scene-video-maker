@@ -192,3 +192,13 @@ button.ghost { background: none; border-color: transparent; font-size: 18px; pad
 .asset-preview { max-width: 100%; max-height: 120px; object-fit: contain; align-self: flex-start; border-radius: 6px; background: #0e1630; }
 .player-wrap.vertical { max-width: calc((100vh - 220px) * 9 / 16); }
 .export select { width: auto; padding: 6px 8px; font-size: 12px; }
+html:has(.gallery), html:has(.gallery) body, html:has(.gallery) #root { height: auto; }
+.gallery { padding: 20px 24px 60px; }
+.gallery-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 5; }
+.gallery-head h1 { font-size: 20px; margin: 0; }
+.gallery-head a { color: var(--primary); }
+.gallery-row { margin-bottom: 26px; }
+.gallery-title { margin-bottom: 8px; }
+.gallery-shots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.gallery-shots figure { margin: 0; border-radius: 6px; overflow: hidden; background: #0e1630; }
+.gallery-shots figcaption { font-size: 11px; color: var(--muted); padding: 4px 6px; background: var(--panel); }
