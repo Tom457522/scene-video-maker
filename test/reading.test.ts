@@ -11,16 +11,16 @@ test('countChars: 空白は数えない', () => {
 });
 
 test('recommendedSeconds: 文字が多いほど長く、0.5 秒刻み', () => {
-  const short = recommendedSeconds({ a: 'あ'.repeat(7) });
-  const long = recommendedSeconds({ a: 'あ'.repeat(70) });
-  assert.equal(short, 3);
-  assert.equal(long, 12);
+  const short = recommendedSeconds({ a: 'あ'.repeat(10) });
+  const long = recommendedSeconds({ a: 'あ'.repeat(100) });
+  assert.equal(short, 2.5);
+  assert.equal(long, 11.5);
   assert.equal((long * 2) % 1, 0);
 });
 
-test('isTooShort: 1 割までの不足は警告しない', () => {
-  const props = { a: 'あ'.repeat(70) };
-  assert.equal(isTooShort(12, props), false);
-  assert.equal(isTooShort(11, props), false);
+test('isTooShort: 目安の 4 分の 3 未満だけ警告する', () => {
+  const props = { a: 'あ'.repeat(100) };
+  assert.equal(isTooShort(11.5, props), false);
+  assert.equal(isTooShort(9, props), false);
   assert.equal(isTooShort(8, props), true);
 });

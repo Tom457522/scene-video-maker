@@ -11,6 +11,8 @@ import { SceneSettings } from './SceneSettings';
 import { TopBar } from './TopBar';
 import { HistoryDialog } from './HistoryDialog';
 import { ReplaceDialog } from './ReplaceDialog';
+import { OutlineDialog } from './OutlineDialog';
+import { ChaptersDialog } from './ChaptersDialog';
 import { replaceAll } from './replace';
 import { fromProject, newKey, newScene, switchPart, toProject, type EditorProject, type EditorScene } from './state';
 
@@ -77,7 +79,8 @@ export const App = () => {
   const [message, setMessage] = useState('');
   const preview = useRef<PreviewHandle>(null);
   /** 開いているダイアログ */
-  const [dialog, setDialog] = useState<null | 'history' | 'replace'>(null);
+  const [dialog, setDialog] = useState<null | 'history' | 'replace' | 'outline' | 'chapters'>(null);
+  const [stillBusy, setStillBusy] = useState(false);
 
   // 元に戻したときにシーンが減っていても、選択がはみ出さないようにする
   const selected = Math.min(selectedRaw, Math.max(0, doc.scenes.length - 1));
@@ -267,6 +270,23 @@ export const App = () => {
 
   const onServer = projects.includes(name);
 
+  /** 選んでいるシーンを PNG で書き出してダウンロードする */
+  const exportStill = async () => {
+    setStillBusy(true);
+    try {
+      const file = await api.renderStill(name, project, selected);
+      const a = document.createElement('a');
+      a.href = api.outputUrl(file);
+      a.download = file;
+      a.click();
+      flash(`${file} を書き出しました`);
+    } catch (e) {
+      window.alert(`PNG を書き出せませんでした: ${(e as Error).message}`);
+    } finally {
+      setStillBusy(false);
+    }
+  };
+
   const newProject = () => {
     if (!confirmDiscard()) return;
     const n = askName('新しいプロジェクトの名前', '新しい動画');
@@ -425,7 +445,11 @@ export const App = () => {
           { label: '保存の履歴から開く…', onClick: () => setDialog('history'), disabled: !onServer, hint: '一度も保存していないプロジェクトには履歴がありません' },
           { label: '削除', onClick: () => void deleteCurrent() },
         ]}
-        toolMenu={[{ label: '一括置換…', onClick: () => setDialog('replace') }]}
+        toolMenu={[
+          { label: '文章からシーンを作る…', onClick: () => setDialog('outline') },
+          { label: '一括置換…', onClick: () => setDialog('replace') },
+          { label: 'YouTube の章の時刻…', onClick: () => setDialog('chapters') },
+        ]}
         onCancelExport={() => void cancelExport()}
         onTitle={(title) => history.set((d) => ({ ...d, title }), 'title')}
         onSave={() => void save()}
@@ -433,6 +457,7 @@ export const App = () => {
       />
       <div className="columns">
         <SceneList
+          settings={doc.settings}
           scenes={doc.scenes}
           selected={selected}
           onSelect={select}
@@ -446,6 +471,8 @@ export const App = () => {
           scene={doc.scenes[selected]}
           index={selected}
           onChange={(s, field) => changeScene(selected, s, `${s.key}:${field}`)}
+          onExportStill={() => void exportStill()}
+          stillBusy={stillBusy}
           onSwitchPart={(id) => {
             const part = getPart(id);
             if (part && doc.scenes[selected]) changeScene(selected, switchPart(doc.scenes[selected], part));
@@ -464,6 +491,22 @@ export const App = () => {
           }}
         />
       )}
+      {dialog === 'outline' && (
+        <OutlineDialog
+          hasScenes={doc.scenes.length > 0}
+          onClose={() => setDialog(null)}
+          onApply={(scenes, title, mode) => {
+            history.set((d) => ({
+              ...d,
+              title: mode === 'replace' && title ? title : d.title,
+              scenes: mode === 'replace' ? scenes : [...d.scenes, ...scenes],
+            }));
+            setSelected(mode === 'replace' ? 0 : doc.scenes.length);
+            flash(`${scenes.length} シーンを作りました`);
+          }}
+        />
+      )}
+      {dialog === 'chapters' && <ChaptersDialog project={project} onClose={() => setDialog(null)} />}
       {dialog === 'replace' && (
         <ReplaceDialog
           project={doc}

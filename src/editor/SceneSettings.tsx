@@ -11,9 +11,11 @@ type Props = {
   /** field は変更した項目('seconds' / 'props')。続けての入力を 1 回の「元に戻す」にまとめるのに使う */
   onChange: (scene: EditorScene, field: string) => void;
   onSwitchPart: (partId: string) => void;
+  onExportStill: () => void;
+  stillBusy: boolean;
 };
 
-export const SceneSettings = ({ scene, index, onChange, onSwitchPart }: Props) => {
+export const SceneSettings = ({ scene, index, onChange, onSwitchPart, onExportStill, stillBusy }: Props) => {
   if (!scene) {
     return (
       <aside className="col col-right">
@@ -26,7 +28,12 @@ export const SceneSettings = ({ scene, index, onChange, onSwitchPart }: Props) =
   const resolved = part ? resolveProps(part, scene.props) : null;
   return (
     <aside className="col col-right">
-      <div className="col-title">シーン {index + 1} の設定</div>
+      <div className="col-title row">
+        <span>シーン {index + 1} の設定</span>
+        <button type="button" className="small-btn" onClick={onExportStill} disabled={stillBusy} title="このシーンの見どころ(70% の時点)を PNG で書き出す">
+          {stillBusy ? '書き出し中…' : '🖼 PNG'}
+        </button>
+      </div>
       <div className="fields">
         <div className="field">
           <div className="label">部品</div>

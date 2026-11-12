@@ -11,6 +11,7 @@
  *   GET  /api/projects/:name/history       前の版の一覧
  *   GET  /api/projects/:name/history/:id   前の版の中身
  *   POST /api/render/:id/cancel   書き出しの中止
+ *   POST /api/still               1 シーンを PNG で書き出す { name, project, scene } → { file }
  *   GET  /api/output/:file        書き出した MP4 のダウンロード
  */
 import { createReadStream, promises as fs } from 'node:fs';
@@ -240,15 +241,32 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
     }
   }
 
+  if (parts[0] === 'still' && parts.length === 1 && method === 'POST') {
+    try {
+      const body = (await readJson(req)) as { name?: unknown; project?: unknown; scene?: unknown };
+      const name = typeof body.name === 'string' && isValidName(body.name) ? body.name : 'video';
+      const scene = typeof body.scene === 'number' && Number.isInteger(body.scene) ? body.scene : -1;
+      const project = projectSchema.parse(body.project);
+      if (scene < 0 || scene >= project.scenes.length) return send(res, 400, { error: 'シーンの指定が不正です' });
+      const file = `${name}-scene${scene + 1}-${timestamp()}.png`;
+      const { renderOneStill } = await import('./render.ts');
+      await renderOneStill(project, scene, path.join(OUT_DIR, file));
+      return send(res, 200, { file });
+    } catch (e) {
+      return send(res, 400, { error: errorMessage(e) });
+    }
+  }
+
   if (parts[0] === 'output' && parts.length === 2 && method === 'GET') {
     const file = parts[1];
-    // out/ 直下の .mp4 だけを返す
-    if (path.basename(file) !== file || !file.endsWith('.mp4')) return send(res, 400, { error: '不正なファイル名です' });
+    // out/ 直下の .mp4 と .png だけを返す
+    const type = file.endsWith('.mp4') ? 'video/mp4' : file.endsWith('.png') ? 'image/png' : null;
+    if (path.basename(file) !== file || !type) return send(res, 400, { error: '不正なファイル名です' });
     const full = path.join(OUT_DIR, file);
     try {
       const stat = await fs.stat(full);
       res.statusCode = 200;
-      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Type', type);
       res.setHeader('Content-Length', String(stat.size));
       res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file)}`);
       createReadStream(full).pipe(res);

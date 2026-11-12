@@ -35,6 +35,8 @@ export const api = {
     call<{ job: RenderJob }>('/api/render', { method: 'POST', body: JSON.stringify({ name, project }) }).then((r) => r.job),
   renderStatus: (id: string) => call<{ job: RenderJob }>(`/api/render/${enc(id)}`).then((r) => r.job),
   outputUrl: (file: string) => `/api/output/${enc(file)}`,
+  renderStill: (name: string, project: Project, scene: number) =>
+    call<{ file: string }>('/api/still', { method: 'POST', body: JSON.stringify({ name, project, scene }) }).then((r) => r.file),
   cancelRender: (id: string) => call<{ ok: boolean }>(`/api/render/${enc(id)}/cancel`, { method: 'POST', body: '{}' }),
   remove: (name: string) => call<{ deleted: string }>(`/api/projects/${enc(name)}`, { method: 'DELETE', body: '{}' }),
   rename: (from: string, to: string) =>

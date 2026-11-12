@@ -148,3 +148,14 @@ export const renderSceneStills = async (
   onProgress('done', 1);
   return results;
 };
+
+/** 1 つのシーンの見どころ(既定: 70% の時点)を PNG で書き出す(サムネイルや資料に使う) */
+export const renderOneStill = async (project: Project, sceneIndex: number, output: string, ratio = 0.7) => {
+  const t = sceneTimeline(project)[sceneIndex];
+  if (!t) throw new Error(`シーン ${sceneIndex + 1} がありません`);
+  const { serveUrl, inputProps, composition } = await prepare(project, () => undefined);
+  await fs.mkdir(path.dirname(output), { recursive: true });
+  const frame = t.from + Math.min(t.durationInFrames - 1, Math.floor(t.durationInFrames * ratio));
+  await renderStill({ composition, serveUrl, inputProps, frame, output, browserExecutable });
+  return output;
+};

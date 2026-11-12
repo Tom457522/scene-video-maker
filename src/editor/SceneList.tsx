@@ -1,12 +1,36 @@
 /** 左列: シーンの一覧(追加・複製・削除・ドラッグで並べ替え) */
-import { useState } from 'react';
+import { Thumbnail } from '@remotion/player';
+import { memo, useMemo, useState } from 'react';
+import { ProjectVideo } from '../video/ProjectVideo';
+import { sceneFrames, type Settings } from '../video/project';
 import { getPart, partErrors, parts, resolveProps } from '../parts/registry';
 import { isTooShort, recommendedSeconds } from '../video/reading';
 import { VIDEO } from '../kit/theme';
 import { formatSeconds, sceneTimeline } from '../video/project';
 import { sceneSummary, type EditorScene } from './state';
 
+/** シーンの見どころ(70% の時点)の縮小画像。シーンか設定が変わったときだけ描き直す */
+const SceneThumb = memo(({ scene, settings }: { scene: EditorScene; settings: Settings }) => {
+  const project = useMemo(() => ({ title: '', settings, scenes: [scene] }), [scene, settings]);
+  const inputProps = useMemo(() => ({ project }), [project]);
+  const frames = sceneFrames(scene);
+  return (
+    <Thumbnail
+      component={ProjectVideo}
+      inputProps={inputProps}
+      compositionWidth={VIDEO.width}
+      compositionHeight={VIDEO.height}
+      frameToDisplay={Math.floor(frames * 0.7)}
+      durationInFrames={frames}
+      fps={VIDEO.fps}
+      style={{ width: 96, height: 54 }}
+    />
+  );
+});
+SceneThumb.displayName = 'SceneThumb';
+
 type Props = {
+  settings: Settings;
   scenes: EditorScene[];
   selected: number;
   onSelect: (i: number) => void;
@@ -16,7 +40,7 @@ type Props = {
   onMove: (from: number, to: number) => void;
 };
 
-export const SceneList = ({ scenes, selected, onSelect, onAdd, onDuplicate, onDelete, onMove }: Props) => {
+export const SceneList = ({ settings, scenes, selected, onSelect, onAdd, onDuplicate, onDelete, onMove }: Props) => {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
   const [picking, setPicking] = useState(false);
@@ -71,10 +95,13 @@ export const SceneList = ({ scenes, selected, onSelect, onAdd, onDuplicate, onDe
               onDragEnd={finishDrag}
               onClick={() => onSelect(i)}
             >
-              <div className="scene-no">{i + 1}</div>
+              <div className="scene-thumb">
+                <SceneThumb scene={scene} settings={settings} />
+                <div className="scene-no">{i + 1}</div>
+              </div>
               <div className="scene-main">
                 <div className="scene-part">
-                  {part ? part.meta.name : <span className="warn">不明な部品: {scene.part}</span>}
+                  {part ? <span>{part.meta.name}</span> : <span className="warn">不明な部品: {scene.part}</span>}
                   <span
                     className={short ? 'scene-time short' : 'scene-time'}
                     title={short ? `文字数に対して短めです(読み切る目安: 約 ${recommendedSeconds(props)} 秒)` : undefined}
