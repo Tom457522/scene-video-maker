@@ -35,7 +35,7 @@ jobs:
         shell: cmd
         run: start.bat --check
 
-      - name: 型チェックと lint
+      - name: 型チェック・lint・単体テスト
         run: npm run check
 
       - name: サンプルの静止画とはみ出しの検査
@@ -43,6 +43,14 @@ jobs:
 
       - name: 長い文字・多い項目のはみ出しの検査
         run: npm run stills -- projects/はみ出し確認.json
+
+      - name: 全部品の最大・最小の入力でのはみ出しの検査
+        run: npm run stress
+
+      # 文字の描き方は OS で少し違うので、見た目の比較は基準の画像を作った Linux だけで行う
+      - name: 見た目の差分の検査(Ubuntu のみ)
+        if: runner.os == 'Linux'
+        run: npm run visual
 
       - name: 静止画を保存する
         if: always()
