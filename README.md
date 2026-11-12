@@ -15,6 +15,10 @@
 
 ## 起動
 
+**Windows**: フォルダの中の `start.bat` をダブルクリックします(初回は `npm install` も自動で行います)。
+
+**コマンドで起動する場合**:
+
 ```bash
 npm install
 npm run dev
@@ -108,6 +112,16 @@ server/       プロジェクトの読み書き・書き出し(Vite の開発サ
 scripts/      render / stills コマンド
 projects/     プロジェクト JSON(sample.json、はみ出し確認.json)
 ```
+
+## CI(自動テスト)
+
+GitHub に push すると、GitHub Actions(`.github/workflows/ci.yml`)が **Windows と Ubuntu** で次を実行します。
+
+1. `start.bat --check`(Windows のみ。起動の手前までを確かめる)
+2. `npm run check`(型チェックと lint)
+3. `npm run stills -- sample` と `はみ出し確認` の静止画の書き出しと、はみ出しの自動検査
+
+書き出した静止画は、実行結果のページの「Artifacts」からダウンロードして見られます。
 
 ## しくみのメモ
 
