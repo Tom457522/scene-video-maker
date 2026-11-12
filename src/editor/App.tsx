@@ -16,6 +16,8 @@ import { ReplaceDialog } from './ReplaceDialog';
 import { OutlineDialog } from './OutlineDialog';
 import { ChaptersDialog } from './ChaptersDialog';
 import { replaceAll } from './replace';
+import { buildCues, toSrt } from '../video/srt';
+import { resolveProps } from '../parts/registry';
 import { fromProject, newKey, newScene, switchPart, toProject, type EditorProject, type EditorScene } from './state';
 
 const LAST_KEY = 'scene-video-maker:last';
@@ -276,6 +278,26 @@ export const App = () => {
 
   const onServer = projects.includes(name);
 
+  /** 各シーンの「字幕」から字幕ファイル(SRT)を作ってダウンロードする */
+  const exportSrt = () => {
+    const cues = buildCues(project, (i) => {
+      const s = project.scenes[i];
+      const part = getPart(s.part);
+      return part ? resolveProps(part, s.props).props : s.props;
+    });
+    if (cues.length === 0) {
+      window.alert('字幕のあるシーンがありません。字幕の入力欄(流れ図・横棒グラフなど)に文を書くと、字幕ファイルに入ります。');
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([toSrt(cues)], { type: 'application/x-subrip;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.srt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    flash(`${name}.srt を書き出しました(${cues.length} 件)`);
+  };
+
   /** 選んでいるシーンを PNG で書き出してダウンロードする */
   const exportStill = async () => {
     setStillBusy(true);
@@ -468,6 +490,7 @@ export const App = () => {
           { label: '動画全体の設定', onClick: () => setRightTab('video') },
           { label: '部品の見本ページ(新しいタブ)', onClick: () => window.open('/?gallery', '_blank') },
           { label: 'YouTube の章の時刻…', onClick: () => setDialog('chapters') },
+          { label: '字幕ファイル(SRT)を書き出す', onClick: exportSrt, hint: '各シーンの「字幕」に書いた文を、そのシーンの時間に並べます' },
         ]}
         onCancelExport={() => void cancelExport()}
         exportExtra={
@@ -500,6 +523,7 @@ export const App = () => {
         ) : (
           <SceneSettings
             header={tabs}
+            settings={doc.settings}
             scene={doc.scenes[selected]}
             index={selected}
             onChange={(s, field) => changeScene(selected, s, `${s.key}:${field}`)}

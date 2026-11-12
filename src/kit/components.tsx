@@ -260,18 +260,33 @@ export const Caption = ({ text, frame, start = T.enter }: { text: string; frame:
 };
 
 /**
- * シーンの入れ物。シーン終わりの T.exit フレームで左へスライドしながらフェードして退場する。
+ * シーンの入れ物。シーン終わりの T.exit フレームで退場する(既定は左へスライドしながらフェード)。
  * 動画の側で全シーンに自動で付くので、部品の中では使わなくてよい。
  */
+export type Transition = 'slide' | 'fade' | 'wipe' | 'zoom' | 'none';
+
 export const SceneFrame = ({
   frame,
   durationInFrames,
+  transition = 'slide',
   children,
 }: {
   frame: number;
   durationInFrames: number;
+  /** 退場の動き(動画全体の設定で選ぶ) */
+  transition?: string;
   children?: ReactNode;
 }) => {
   const e = exitProgress(frame, durationInFrames);
-  return <Fill style={{ opacity: 1 - e, transform: `translateX(${mix(e, 0, -80)}px)` }}>{children}</Fill>;
+  const style: CSSProperties =
+    transition === 'fade'
+      ? { opacity: 1 - e }
+      : transition === 'wipe'
+        ? { clipPath: `inset(0 0 0 ${e * 100}%)` }
+        : transition === 'zoom'
+          ? { opacity: 1 - e, transform: `scale(${mix(e, 1, 1.08)})` }
+          : transition === 'none'
+            ? {}
+            : { opacity: 1 - e, transform: `translateX(${mix(e, 0, -80)}px)` };
+  return <Fill style={style}>{children}</Fill>;
 };

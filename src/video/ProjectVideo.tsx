@@ -76,7 +76,7 @@ const useLayoutProbe = (root: React.RefObject<HTMLDivElement | null>, enabled: b
 
 export { useChapters };
 
-const SceneBody = ({ part, scene, index, check }: { part: PartDef; scene: Scene; index: number; check: boolean }) => {
+const SceneBody = ({ part, scene, index, check, transition }: { part: PartDef; scene: Scene; index: number; check: boolean; transition: string }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
   const root = useRef<HTMLDivElement>(null);
@@ -84,7 +84,7 @@ const SceneBody = ({ part, scene, index, check }: { part: PartDef; scene: Scene;
   useLayoutProbe(root, check, index, JSON.stringify(props));
   const C = part.Component;
   return (
-    <SceneFrame frame={frame} durationInFrames={durationInFrames}>
+    <SceneFrame frame={frame} durationInFrames={durationInFrames} transition={transition}>
       <div ref={root} style={{ position: 'absolute', inset: 0 }}>
         <C props={props} frame={frame} durationInFrames={durationInFrames} fps={fps} />
       </div>
@@ -140,7 +140,7 @@ export const ProjectVideo = ({ project, checkLayout: check = false, embedded = f
           <Sequence key={i} from={timeline[i].from} durationInFrames={timeline[i].durationInFrames} name={`${i + 1}. ${scene.part}`}>
             {part ? (
               <PartBoundary partId={scene.part}>
-                <SceneBody part={part} scene={scene} index={i} check={check} />
+                <SceneBody part={part} scene={scene} index={i} check={check} transition={settings.transition} />
               </PartBoundary>
             ) : (
               <Notice title={`部品「${scene.part}」が見つかりません`} detail="src/parts/ にフォルダがあるか確かめてください" />

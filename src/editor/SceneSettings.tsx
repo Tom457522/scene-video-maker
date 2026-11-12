@@ -4,6 +4,8 @@ import { getPart, parts, resolveProps } from '../parts/registry';
 import { MAX_SECONDS, MIN_SECONDS } from '../video/project';
 import { isTooShort, recommendedSeconds } from '../video/reading';
 import { SchemaForm } from './SchemaForm';
+import { ReadabilityHint, useSmallestText } from './Readability';
+import type { Settings } from '../video/project';
 import type { EditorScene } from './state';
 
 type Props = {
@@ -16,9 +18,11 @@ type Props = {
   stillBusy: boolean;
   /** 右列の上のタブ */
   header: ReactNode;
+  settings: Settings;
 };
 
-export const SceneSettings = ({ scene, index, onChange, onSwitchPart, onExportStill, stillBusy, header }: Props) => {
+export const SceneSettings = ({ scene, index, onChange, onSwitchPart, onExportStill, stillBusy, header, settings }: Props) => {
+  const { smallest, probe } = useSmallestText(scene, settings);
   if (!scene) {
     return (
       <aside className="col col-right">
@@ -92,6 +96,24 @@ export const SceneSettings = ({ scene, index, onChange, onSwitchPart, onExportSt
           )}
         </div>
       </div>
+      <div className="fields" style={{ marginTop: 14 }}>
+        <div className="field">
+          <div className="label">章の区切り</div>
+          <input
+            type="text"
+            maxLength={40}
+            value={scene.chapter ?? ''}
+            placeholder="空欄なら見出しから自動で決める"
+            onChange={(e) => {
+              const { chapter: _old, ...rest } = scene;
+              onChange(e.target.value === '' ? rest : { ...scene, chapter: e.target.value }, 'chapter');
+            }}
+          />
+          <div className="hint">ここに章の名前を書くと、このシーンから新しい章になる(章の表示・YouTube の章・縦長の動画に使う)。どこかで指定すると、指定したシーンだけが章の始まりになる</div>
+        </div>
+      </div>
+      <ReadabilityHint smallest={smallest} />
+      {probe}
       <hr />
       {part && resolved ? (
         <>

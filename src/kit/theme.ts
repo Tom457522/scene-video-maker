@@ -33,9 +33,10 @@ export const themes = {
     bg: '#F5F7FC',
     text: '#18213F',
     sub: '#56608A',
-    yellow: '#E3A008',
-    teal: '#0F9F91',
-    coral: '#E8573A',
+    // 明るい背景でも読めるよう、強調色は暗めにする(背景・白い文字とのコントラスト比 3.9 以上)
+    yellow: '#A86F00',
+    teal: '#0B7F72',
+    coral: '#C9432A',
     onAccent: '#FFFFFF',
   },
   black: {

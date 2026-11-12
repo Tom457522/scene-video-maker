@@ -107,3 +107,19 @@ export const checkLayout = (root: HTMLElement): LayoutIssue[] => {
   }
   return issues;
 };
+
+/** 見えている文字のうち、いちばん小さい文字の大きさ(px、1280×720 の画面での大きさ)と、その文字 */
+export const measureSmallestText = (root: HTMLElement): { size: number; text: string } | null => {
+  let best: { size: number; text: string } | null = null;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const text = (n.textContent ?? '').trim();
+    const parent = n.parentElement;
+    if (!text || !parent || effectiveOpacity(parent, root) < MIN_OPACITY) continue;
+    // 1 文字だけの記号(番号バッジの数字など)は除く
+    if (Array.from(text).length < 2) continue;
+    const size = parseFloat(getComputedStyle(parent).fontSize);
+    if (!best || size < best.size) best = { size, text: shorten(text) };
+  }
+  return best;
+};

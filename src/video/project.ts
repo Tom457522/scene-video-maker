@@ -12,6 +12,8 @@ export const sceneSchema = z.object({
   part: z.string().min(1),
   seconds: z.number().min(MIN_SECONDS).max(MAX_SECONDS),
   props: z.record(z.string(), z.unknown()).default({}),
+  /** このシーンから新しい章にするときの章の名前(省略すると見出しから自動で決める) */
+  chapter: z.string().max(40).optional(),
 });
 
 /** 動画全体の設定(テーマ・章の表示・チャンネル名とロゴ・エンドカード) */
@@ -26,6 +28,15 @@ export const settingsSchema = z.object({
   logo: field.image('ロゴ画像', { description: '右上とエンドカードに出す' }),
   endCard: field.toggle('エンドカード', false, { description: '最後に 4 秒の締めの画面を付ける' }),
   endCardMessage: field.text('エンドカードの文', 'ご視聴ありがとうございました', { max: 60 }),
+  transition: z
+    .string()
+    .max(20)
+    .default('slide')
+    .meta({
+      title: 'シーンの切り替え',
+      options: { slide: '左へ流れる', fade: 'フェード', wipe: 'ワイプ', zoom: 'ズーム', none: '動きなし' },
+      description: '各シーンの終わりの消え方(速さは自動で決まる)',
+    }),
 });
 
 export const projectSchema = z.object({

@@ -1,5 +1,6 @@
 /**
  * 章(チャプター)。各シーンの見出し(heading / title)を章の名前にし、同じ見出しが続くシーンは 1 つの章にまとめる。
+ * シーンに chapter(章の名前)を指定したときは、指定したシーンだけを章の始まりにする。
  * 動画の中の章の表示と、YouTube の概要欄に貼る「0:00 タイトル」の両方に使う。
  */
 import { stripMarks } from '../kit/text';
@@ -30,6 +31,20 @@ export const buildChapters = (
 ): Chapter[] => {
   const timeline = sceneTimeline(project);
   const out: Chapter[] = [];
+  // どれかのシーンで章を指定していれば、指定したシーンだけを章の始まりにする
+  if (project.scenes.some((s) => s.chapter?.trim())) {
+    project.scenes.forEach((s, i) => {
+      const explicit = s.chapter?.trim();
+      const last = out[out.length - 1];
+      if (explicit || !last) {
+        out.push({ label: explicit || chapterLabel(resolve(i)) || `シーン ${i + 1}`, from: timeline[i].from, durationInFrames: timeline[i].durationInFrames, scenes: [i] });
+      } else {
+        last.durationInFrames += timeline[i].durationInFrames;
+        last.scenes.push(i);
+      }
+    });
+    return out;
+  }
   project.scenes.forEach((_, i) => {
     const label = chapterLabel(resolve(i)) || `シーン ${i + 1}`;
     const last = out[out.length - 1];
