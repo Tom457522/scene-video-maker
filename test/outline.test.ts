@@ -169,3 +169,22 @@ test('分かれたシーンのナレーションは最初のシーンだけに�
   assert.equal(r.scenes[1].narration, undefined);
   assert.equal(r.scenes[0].notes?.length, 1);
 });
+
+test('1 つの見出しに種類の違う書き方があると、書いた順に別のシーンに分ける', () => {
+  const r = parseOutline('## 並列で速くなる\nナレーション: 説明します。\n!! 3倍 速くなる\nQ: 何が速い?\nA: 書き出しです');
+  assert.deepEqual(r.scenes.map((s) => s.part), ['number', 'qa']);
+  assert.equal(r.scenes[0].props.heading, '並列で速くなる');
+  assert.equal(r.scenes[0].props.value, 3);
+  assert.equal(r.scenes[0].narration, '説明します。');
+  assert.equal(r.scenes[1].narration, undefined);
+  assert.ok(r.scenes[0].notes?.some((n) => n.includes('2 シーンに分けました')));
+
+  const r2 = parseOutline('## X\n- ひとつ\n- ふたつ\n> 字幕\nQ: 問い\nA: 答え');
+  assert.deepEqual(r2.scenes.map((s) => s.part), ['bullets', 'qa']);
+  assert.deepEqual(r2.scenes[0].props.items, ['ひとつ', 'ふたつ']);
+});
+
+test('箇条書きとグラフの行が混ざっても、行を落とさない', () => {
+  const r = parseOutline('## 混在\n- はじめ\n速さ: 3倍\n- おわり');
+  assert.deepEqual(r.scenes[0].props.items, ['はじめ', '速さ: 3倍', 'おわり']);
+});

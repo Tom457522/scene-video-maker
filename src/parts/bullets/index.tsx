@@ -48,16 +48,17 @@ const BADGE_GAP = 28;
 // 3. Component: props と frame だけから見た目を決める
 export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const n = props.items.length;
-  const top = layout.contentTop;
   const bottom = layout.contentBottomFull;
-  const rowHeight = Math.min(112, (bottom - top) / n);
+  const rowHeight = Math.min(120, (bottom - layout.contentTop) / n);
+  // 項目が少ないときは、空いた分を上下に分けて縦の中央寄りに置く(下側だけが空かないように)
+  const top = layout.contentTop + ((bottom - layout.contentTop) - rowHeight * n) * 0.4;
   const textWidth = layout.contentWidth - BADGE - BADGE_GAP;
 
   // 全項目を同じ文字サイズにそろえる。幅と行の高さの両方に収まる大きさにする(長い文は折り返して小さくなる)
   const size = fitFontSizeToBox(props.items, {
     maxWidth: textWidth,
     maxHeight: rowHeight - 8,
-    max: Math.min(font.size.body, Math.floor(rowHeight * 0.4)),
+    max: Math.min(n <= 3 ? 44 : font.size.body, Math.floor(rowHeight * 0.4)),
     min: 14,
   });
 

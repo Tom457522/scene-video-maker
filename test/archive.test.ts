@@ -47,3 +47,26 @@ test('想定外のファイルは展開せず、project.json がない zip は�
   await assert.rejects(archive.importArchive(zipSync({ 'a.txt': strToU8('x') }), 'x'), /project.json/);
   await assert.rejects(archive.importArchive(new Uint8Array([1, 2, 3]), 'x'), /zip を読めません/);
 });
+
+test('手持ちの BGM は zip に入れて読み込み先に戻し、自動で作る BGM は読み込むときに作り直す', async () => {
+  const bgm = await import('../server/bgm.ts');
+  const mp3 = Buffer.concat([Buffer.from('ID3'), Buffer.from([4, 0, 0, 1, 2, 3])]);
+  const file = await bgm.saveBgm('曲.mp3', mp3);
+  assert.equal(file, 'audio/bgm-file-曲.mp3');
+  const zip = await archive.exportArchive({ title: 't', settings: { bgm: file }, scenes: [] });
+  assert.ok(Object.keys(unzipSync(zip)).includes('assets/audio/bgm-file-曲.mp3'));
+
+  // 読み込み先に同じ名前の別の曲があれば、名前を付け直して参照も直す
+  const { writeFileSync } = await import('node:fs');
+  writeFileSync(path.join(dir, 'assets', 'audio', 'bgm-file-曲.mp3'), Buffer.concat([Buffer.from('ID3'), Buffer.from([9])]));
+  const r = await archive.importArchive(zip, 'BGM つき');
+  assert.deepEqual(r.renamed, { 'audio/bgm-file-曲.mp3': 'audio/bgm-file-曲-2.mp3' });
+  assert.equal((await store.readProject('BGM つき')).settings.bgm, 'audio/bgm-file-曲-2.mp3');
+  assert.deepEqual([...readFileSync(path.join(dir, 'assets', 'audio', 'bgm-file-曲-2.mp3'))], [...mp3]);
+
+  // 自動で作る曲は zip に入れず、読み込むと作られる
+  const zip2 = await archive.exportArchive({ title: 't', settings: { bgm: 'audio/bgm-calm.wav' }, scenes: [] });
+  assert.deepEqual(Object.keys(unzipSync(zip2)), ['project.json']);
+  await archive.importArchive(zip2, '自動の曲');
+  assert.ok(readFileSync(path.join(dir, 'assets', 'audio', 'bgm-calm.wav')).length > 1000);
+});

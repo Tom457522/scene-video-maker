@@ -18,6 +18,10 @@ type Props = {
   selected: number;
   jobs: RenderJob[];
   issues: Issue[];
+  /** 文字の大きさをまだ測っているシーンがある */
+  checking: boolean;
+  /** 今の内容と同じ書き出し: starting 始めている / running 書き出し中 / done 書き終えた */
+  exportState: 'starting' | 'running' | 'done' | null;
   format: ExportFormat;
   quality: Quality;
   onFormat: (f: ExportFormat) => void;
@@ -44,7 +48,7 @@ export const ExportDialog = (p: Props) => {
             {p.issues.length === 0 ? (
               <div className="check-row ok">
                 <UiIcon name="check" />
-                <span>気になるところはありません</span>
+                <span>{p.checking ? '文字の大きさを確かめています…' : '気になるところはありません'}</span>
               </div>
             ) : (
               p.issues.map((iss, i) => (
@@ -92,10 +96,14 @@ export const ExportDialog = (p: Props) => {
         )}
 
         <div className="start-row">
-          <span className="hint">書き出し中も編集を続けられます。続けて押すと順番に書き出します。</span>
-          <button type="button" className="accent big" onClick={p.onStart}>
+          <span className="hint">
+            {p.exportState === 'running'
+              ? '同じ内容を書き出しています。編集するか、形式を変えると、続けて書き出せます。'
+              : '書き出し中も編集を続けられます。続けて押すと順番に書き出します。'}
+          </span>
+          <button type="button" className="accent big" onClick={p.onStart} disabled={p.exportState === 'starting' || p.exportState === 'running'}>
             <UiIcon name="play" />
-            書き出しを始める
+            {p.exportState === 'starting' || p.exportState === 'running' ? '書き出し中…' : p.exportState === 'done' ? 'もう 1 本書き出す' : '書き出しを始める'}
           </button>
         </div>
 

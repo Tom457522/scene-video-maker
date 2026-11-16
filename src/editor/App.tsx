@@ -26,6 +26,7 @@ import { KeysDialog } from './KeysDialog';
 import { StartPanel } from './StartPanel';
 import { DialogHost, askConfirm, askText, showAlert } from './dialogs';
 import { findIssues, lostFields, type Issue } from './guide';
+import { smallTextIssues, useReadability } from './Readability';
 import type { MenuEntry } from './Modal';
 import { copyScenes, readCopiedScenes, useCopiedScenes } from './clipboard';
 import { replaceAll } from './replace';
@@ -121,6 +122,8 @@ export const App = () => {
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [message, setMessage] = useState('');
   const preview = useRef<PreviewHandle>(null);
+  /** プレビューを大きく見る(左のシーン一覧を隠して、中央を広げる) */
+  const [widePreview, setWidePreview] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [stillBusy, setStillBusy] = useState(false);
   /** 右列のタブ: 選んだシーンの設定 / 動画全体の設定 */
@@ -152,7 +155,12 @@ export const App = () => {
   const snapshot = useMemo(() => JSON.stringify(project), [project]);
   const dirty = loaded && snapshot !== saved;
   const timeline = useMemo(() => sceneTimeline(project), [project]);
-  const issues = useMemo(() => findIssues(project.scenes), [project]);
+  // 文字の大きさは画面の外で描いて測る(選んでいるシーンから順に)。小さすぎる文字も「確認」に入れる
+  const readability = useReadability(project.scenes, project.settings, selected);
+  const issues = useMemo(
+    () => [...findIssues(project.scenes), ...smallTextIssues(readability.byScene, (i) => getPart(project.scenes[i]?.part ?? '')?.meta.name ?? '')].sort((a, b) => a.scene - b.scene),
+    [project, readability.byScene],
+  );
   const saveState: SaveState = saving ? 'saving' : saveError ? 'error' : dirty ? 'pending' : 'saved';
 
   useEffect(() => {
@@ -587,14 +595,36 @@ export const App = () => {
   }, [active, refreshJobs]);
 
   /** 今の内容を、選んだ形式・画質で順番待ちに入れる(GIF は選んでいるシーンだけ) */
+  /** 同じ内容を続けて書き出さないよう、最後に書き出した内容(と書き出し)を覚えておく */
+  const [lastExport, setLastExport] = useState<{ sig: string; jobId: string } | null>(null);
+  const [exportStarting, setExportStarting] = useState(false);
+  const exportSig = useMemo(
+    () => JSON.stringify([name, project, format, quality, EXPORT_FORMATS[format].sceneOnly ? selected : -1]),
+    [name, project, format, quality, selected],
+  );
+  const lastJob = lastExport && lastExport.sig === exportSig ? jobs.find((j) => j.id === lastExport.jobId) : undefined;
+  const exportState: 'starting' | 'running' | 'done' | null = exportStarting
+    ? 'starting'
+    : !lastJob
+      ? null
+      : lastJob.status === 'queued' || lastJob.status === 'running'
+        ? 'running'
+        : lastJob.status === 'done'
+          ? 'done'
+          : null;
   const exportVideo = async () => {
+    if (exportStarting) return;
+    setExportStarting(true);
     try {
       const job = await api.startRender(name, project, format, quality, selected);
+      setLastExport({ sig: exportSig, jobId: job.id });
       setJobs((js) => [job, ...js]);
       flash(`「${job.label}」を順番待ちに入れました`);
       void refreshJobs();
     } catch (e) {
       void showAlert('書き出しを始められませんでした', (e as Error).message);
+    } finally {
+      setExportStarting(false);
     }
   };
 
@@ -746,6 +776,7 @@ export const App = () => {
         onFixIssue={fixIssue}
         onExport={() => setDialog({ kind: 'export' })}
       />
+      {readability.probe}
       {empty ? (
         <StartPanel
           onOutline={() => setDialog({ kind: 'add', tab: 'outline' })}
@@ -754,7 +785,7 @@ export const App = () => {
           onImportZip={() => zipInput.current?.click()}
         />
       ) : (
-        <div className="columns">
+        <div className={widePreview ? 'columns wide' : 'columns'}>
           <SceneList
             settings={doc.settings}
             scenes={doc.scenes}
@@ -768,13 +799,21 @@ export const App = () => {
             onDelete={remove}
             onMove={move}
           />
-          <Preview ref={preview} project={project} selected={selected} onSelectScene={setSelected} onShowKeys={() => setDialog({ kind: 'keys' })} />
+          <Preview
+            ref={preview}
+            project={project}
+            selected={selected}
+            onSelectScene={setSelected}
+            onShowKeys={() => setDialog({ kind: 'keys' })}
+            wide={widePreview}
+            onToggleWide={() => setWidePreview((v) => !v)}
+          />
           {rightTab === 'video' ? (
             <VideoSettings header={tabs} settings={doc.settings} onChange={(settings) => history.set((d) => ({ ...d, settings }), 'settings')} />
           ) : (
             <SceneSettings
               header={tabs}
-              settings={doc.settings}
+              smallest={readability.byScene[selected]}
               scene={doc.scenes[selected]}
               index={selected}
               onChange={(s, field) => changeScene(selected, s, `${s.key}:${field}`)}
@@ -808,10 +847,12 @@ export const App = () => {
           selected={selected}
           jobs={jobs}
           issues={issues}
+          checking={readability.byScene.some((r) => r === undefined)}
           format={format}
           quality={quality}
           onFormat={setFormat}
           onQuality={setQuality}
+          exportState={exportState}
           onStart={() => void exportVideo()}
           onIssue={goToIssue}
           onFixIssue={fixIssue}

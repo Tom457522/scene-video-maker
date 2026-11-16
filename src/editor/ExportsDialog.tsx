@@ -9,8 +9,8 @@ import { showAlert } from './dialogs';
 
 const stageLabel: Record<RenderJob['stage'], string> = {
   waiting: '順番待ち',
-  bundling: '準備中(バンドル作成)',
-  browser: '準備中(ブラウザ)',
+  bundling: '書き出しの準備中(1/2)',
+  browser: '書き出しの準備中(2/2)',
   rendering: '書き出し中',
   done: '完了',
 };

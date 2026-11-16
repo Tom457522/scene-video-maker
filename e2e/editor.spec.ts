@@ -144,7 +144,7 @@ test('動画全体の設定: テーマ・章の表示・エンドカード、You
 test('zip で持ち出して、zip から読み込む', async ({ page }) => {
   await openEditor(page);
   await page.getByRole('tab', { name: /動画全体/ }).click();
-  await page.locator('.col-right .asset-field select').selectOption('ブロックの図.png');
+  await page.locator('.col-right .asset-field:not(.bgm-field) select').selectOption('ブロックの図.png');
   const [download] = await Promise.all([page.waitForEvent('download'), menu(page, 'zip で持ち出す(画像も入る)')]);
   // ファイルの場所に日本語が入らないようにする(場所に日本語があると、ファイル選択で change が起きないことがある)
   const zipPath = path.join(mkdtempSync(path.join(os.tmpdir(), 'svm-zip-')), 'sample.zip');
@@ -154,7 +154,7 @@ test('zip で持ち出して、zip から読み込む', async ({ page }) => {
   await chooser.setFiles(zipPath);
   await expect(projectName(page)).toHaveText('sample-2');
   await page.getByRole('tab', { name: /動画全体/ }).click();
-  await expect(page.locator('.col-right .asset-field select')).toHaveValue('ブロックの図.png');
+  await expect(page.locator('.col-right .asset-field:not(.bgm-field) select')).toHaveValue('ブロックの図.png');
 });
 
 test('短すぎる秒数は「確認」に出て、目安に合わせると消える', async ({ page }) => {

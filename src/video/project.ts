@@ -46,7 +46,7 @@ export const settingsSchema = z.object({
   channelName: field.text('チャンネル名', '', { max: 40, description: '右上とエンドカードに出す。空欄なら出さない' }),
   logo: field.image('ロゴ画像', { description: '右上とエンドカードに出す' }),
   endCard: field.toggle('エンドカード', false, { description: '最後に 4 秒の締めの画面を付ける' }),
-  endCardMessage: field.text('エンドカードの文', 'ご視聴ありがとうございました', { max: 60 }),
+  endCardMessage: field.text('エンドカードの文', 'ご視聴ありがとうございました', { max: 60, enabledBy: 'endCard' }),
   transition: z
     .string()
     .max(20)
@@ -57,8 +57,8 @@ export const settingsSchema = z.object({
       description: '各シーンの終わりの消え方(速さは自動で決まる)',
     }),
   subtitles: field.toggle('ナレーションの字幕', true, { description: 'ナレーションの音声があるシーンで、話している文を下に出す' }),
-  bgm: z.string().max(200).default('').meta({ title: 'BGM', description: 'projects/assets/ の音声ファイル(npm run make の --bgm で作る)' }),
-  bgmVolume: field.number('BGM の音量', 0.1, { min: 0, max: 1, step: 0.05, description: '0〜1。ナレーションの間は自動で下がる' }),
+  bgm: z.string().max(200).default('').meta({ title: 'BGM', asset: 'audio', description: '動画の後ろで小さく流す曲。自動で作る曲か、手持ちの曲(MP3 など)を選ぶ' }),
+  bgmVolume: field.number('BGM の音量', 0.1, { min: 0, max: 1, step: 0.05, description: '0〜1。ナレーションの間は自動で下がる', enabledBy: 'bgm' }),
   sfx: field.toggle('効果音', true, { description: 'ナレーションに合わせて項目が出るときに小さな音を鳴らす' }),
 });
 

@@ -2,9 +2,9 @@
  * 部品の schema(zod)から設定フォームを自動で作る。
  * zod → JSON Schema に変換し、type と meta(title / multiline / options など)を見て入力欄を選ぶ。
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
-import { assetUrl, uploadAsset, useAssets } from './assets';
+import { assetUrl, audioUrl, listBgm, prepareMood, uploadAsset, uploadBgm, useAssets, type BgmChoice } from './assets';
 import { cancelPick, startPick, usePick } from './pick';
 import { Icon, ICON_OPTIONS } from '../kit/icons';
 import { showAlert } from './dialogs';
@@ -20,7 +20,8 @@ export type JsonSchema = {
   marks?: boolean;
   step?: number;
   itemTitle?: string;
-  asset?: 'image';
+  asset?: 'image' | 'audio';
+  enabledBy?: string;
   point?: boolean;
   icon?: boolean;
   minimum?: number;
@@ -88,9 +89,20 @@ export const wrapMarks = (text: string, from: number, to: number): { text: strin
   return { text: `${text.slice(0, a)}[[${inner}]]${text.slice(b)}`, from: a + 2, to: b + 2 };
 };
 
-const TextField = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) => {
+/**
+ * wrap: 一覧の 1 項目のように幅が狭い欄では、1 行の入力欄の代わりに折り返して全文が見える欄にする
+ * (改行は入れられない。高さは文の長さに合わせて伸びる)
+ */
+const TextField = ({ schema, value, onChange, wrap }: Omit<FieldProps, 'label'> & { wrap?: boolean }) => {
   const v = typeof value === 'string' ? value : '';
   const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const grow = wrap && !schema.multiline;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!grow || !el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [grow, v]);
   const emphasize = () => {
     const el = ref.current;
     if (!el) return;
@@ -109,13 +121,21 @@ const TextField = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) => {
     maxLength: schema.maxLength,
     onChange: (e: { target: { value: string } }) => onChange(e.target.value),
     onKeyDown: (e: React.KeyboardEvent) => {
+      // 折り返す欄でも 1 行の文なので、Enter で改行しない
+      if (grow && e.key === 'Enter') e.preventDefault();
       if (schema.marks && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         emphasize();
       }
     },
   };
-  const input = schema.multiline ? <textarea rows={3} {...common} /> : <input type="text" {...common} />;
+  const input = schema.multiline ? (
+    <textarea rows={3} {...common} />
+  ) : grow ? (
+    <textarea rows={1} className="wrap-input" {...common} onChange={(e) => onChange(e.target.value.replace(/\r?\n/g, ' '))} />
+  ) : (
+    <input type="text" {...common} />
+  );
   if (!schema.marks) return input;
   return (
     <div className="with-mark">
@@ -134,6 +154,69 @@ const TextField = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) => {
 };
 
 /** 画像を選ぶ・アップロードする */
+/** BGM: 自動で作る曲か、追加した手持ちの曲を選ぶ */
+const BgmField = ({ value, onChange }: Omit<FieldProps, 'label' | 'schema'>) => {
+  const v = typeof value === 'string' ? value : '';
+  const [choices, setChoices] = useState<BgmChoice[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void listBgm().then(setChoices, () => setChoices([]));
+  }, []);
+  const choose = async (file: string) => {
+    const c = choices.find((x) => x.file === file);
+    if (!c?.generated) return onChange(file);
+    // 自動で作る曲は、選んだときに作る(数秒かかる)
+    setBusy(true);
+    try {
+      onChange(await prepareMood(file));
+    } catch (err) {
+      void showAlert('曲を用意できませんでした', (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="asset-field bgm-field">
+      <div className="asset-row">
+        <select value={v} disabled={busy} onChange={(e) => void choose(e.target.value)} aria-label="BGM">
+          <option value="">(なし)</option>
+          {v && !choices.some((c) => c.file === v) && <option value={v}>{v.replace(/^audio\//, '')}(見つかりません)</option>}
+          {choices.map((c) => (
+            <option key={c.file} value={c.file}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <label className={busy ? 'upload busy' : 'upload'}>
+          {busy ? '用意中…' : '曲を追加'}
+          <input
+            type="file"
+            accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/aac,audio/ogg,.mp3,.wav,.m4a,.aac,.ogg"
+            hidden
+            disabled={busy}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              setBusy(true);
+              try {
+                const saved = await uploadBgm(file);
+                setChoices(await listBgm());
+                onChange(saved);
+              } catch (err) {
+                void showAlert('曲を追加できませんでした', (err as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        </label>
+      </div>
+      {v && <audio className="bgm-preview" src={audioUrl(v)} controls preload="none" />}
+    </div>
+  );
+};
+
 const AssetField = ({ value, onChange }: Omit<FieldProps, 'label' | 'schema'>) => {
   const assets = useAssets();
   const v = typeof value === 'string' ? value : '';
@@ -296,9 +379,18 @@ const ObjectFields = ({ schema, value, onChange }: Omit<FieldProps, 'label'>) =>
   const obj = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   return (
     <div className="fields">
-      {Object.entries(schema.properties ?? {}).map(([key, s]) => (
-        <Field key={key} schema={s} label={s.title ?? key} value={obj[key]} onChange={(v) => onChange({ ...obj, [key]: v })} />
-      ))}
+      {Object.entries(schema.properties ?? {}).map(([key, s]) => {
+        const field = <Field key={key} schema={s} label={s.title ?? key} value={obj[key]} onChange={(v) => onChange({ ...obj, [key]: v })} />;
+        // オン/オフ(または空欄かどうか)で使わない欄は、入力できないようにする
+        const off = s.enabledBy !== undefined && !obj[s.enabledBy];
+        if (!off) return field;
+        const owner = schema.properties?.[s.enabledBy!]?.title ?? s.enabledBy;
+        return (
+          <fieldset key={key} className="field-off" disabled title={`「${owner}」を使うときに入力できます`}>
+            {field}
+          </fieldset>
+        );
+      })}
     </div>
   );
 };
@@ -307,6 +399,7 @@ const Field = ({ schema, value, onChange, label, bare }: FieldProps & { bare?: b
   let control;
   const t = typeOf(schema);
   if (schema.asset === 'image') control = <AssetField value={value} onChange={onChange} />;
+  else if (schema.asset === 'audio') control = <BgmField value={value} onChange={onChange} />;
   else if (schema.point) control = <PointField value={value} onChange={onChange} label={label} />;
   else if (schema.icon) control = <IconField value={value} onChange={onChange} />;
   else if (schema.enum || (schema.options && t === 'string')) {
@@ -320,7 +413,7 @@ const Field = ({ schema, value, onChange, label, bare }: FieldProps & { bare?: b
         ))}
       </select>
     );
-  } else if (t === 'string') control = <TextField schema={schema} value={value} onChange={onChange} />;
+  } else if (t === 'string') control = <TextField schema={schema} value={value} onChange={onChange} wrap={bare} />;
   else if (t === 'number' || t === 'integer') control = <NumberField schema={schema} value={value} onChange={onChange} />;
   else if (t === 'boolean')
     control = (

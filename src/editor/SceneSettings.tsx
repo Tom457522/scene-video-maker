@@ -7,8 +7,7 @@ import { getPart, resolveProps } from '../parts/registry';
 import { MAX_SECONDS, MIN_SECONDS } from '../video/project';
 import { isTooShort, recommendedSeconds } from '../video/reading';
 import { SchemaForm } from './SchemaForm';
-import { ReadabilityHint, SMALL_TEXT, useSmallestText } from './Readability';
-import type { Settings } from '../video/project';
+import { ReadabilityHint, SMALL_TEXT, type Smallest } from './Readability';
 import type { EditorScene } from './state';
 import { UiIcon } from './ui-icons';
 
@@ -23,11 +22,11 @@ type Props = {
   stillBusy: boolean;
   /** 右列の上のタブ */
   header: ReactNode;
-  settings: Settings;
+  /** いちばん小さい文字(測り終えていなければ undefined) */
+  smallest: Smallest | undefined;
 };
 
-export const SceneSettings = ({ scene, index, onChange, onChangePart, onExportStill, stillBusy, header, settings }: Props) => {
-  const { smallest, probe } = useSmallestText(scene, settings);
+export const SceneSettings = ({ scene, index, onChange, onChangePart, onExportStill, stillBusy, header, smallest }: Props) => {
   if (!scene) {
     return (
       <aside className="col col-right">
@@ -40,7 +39,7 @@ export const SceneSettings = ({ scene, index, onChange, onChangePart, onExportSt
   const resolved = part ? resolveProps(part, scene.props) : null;
   const rec = resolved ? Math.min(MAX_SECONDS, recommendedSeconds(resolved.props)) : null;
   const short = resolved ? isTooShort(scene.seconds, resolved.props) : false;
-  const small = smallest !== null && Math.round(smallest.size) < SMALL_TEXT;
+  const small = !!smallest && Math.round(smallest.size) < SMALL_TEXT;
   const fitSeconds = () => rec !== null && onChange({ ...scene, seconds: rec }, 'seconds-auto');
   return (
     <aside className="col col-right">
@@ -72,7 +71,6 @@ export const SceneSettings = ({ scene, index, onChange, onChangePart, onExportSt
           <ReadabilityHint smallest={smallest} />
         </div>
       )}
-      {probe}
 
       {part && resolved ? (
         <>

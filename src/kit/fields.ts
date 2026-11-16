@@ -24,8 +24,10 @@ export type FieldMeta = {
   step?: number;
   /** リストの 1 件の呼び名(「項目」「行」など) */
   itemTitle?: string;
-  /** 'image' なら、画像を選ぶ・アップロードする入力欄にする */
-  asset?: 'image';
+  /** 'image' なら画像、'audio' なら BGM を選ぶ・追加する入力欄にする */
+  asset?: 'image' | 'audio';
+  /** 同じ設定の中の、この名前のオン/オフがオフのときは入力できなくする */
+  enabledBy?: string;
   /** true なら、プレビューをクリックして位置を決める入力欄にする(field.point) */
   point?: boolean;
   /** true なら、アイコンを選ぶ入力欄にする(field.icon) */
@@ -36,12 +38,17 @@ const MARK_HINT = '[[ ]] で囲んだ語にマーカーが引かれます';
 
 export const field = {
   /** 1 行の文字 */
-  text: (title: string, def: string, opts: { max?: number; marks?: boolean; description?: string } = {}) =>
+  text: (title: string, def: string, opts: { max?: number; marks?: boolean; description?: string; enabledBy?: string } = {}) =>
     z
       .string()
       .max(opts.max ?? 80)
       .default(def)
-      .meta({ title, marks: opts.marks, description: opts.description ?? (opts.marks ? MARK_HINT : undefined) } satisfies FieldMeta),
+      .meta({
+        title,
+        marks: opts.marks,
+        description: opts.description ?? (opts.marks ? MARK_HINT : undefined),
+        ...(opts.enabledBy ? { enabledBy: opts.enabledBy } : {}),
+      } satisfies FieldMeta),
 
   /** 複数行の文字 */
   longText: (title: string, def: string, opts: { max?: number; marks?: boolean; description?: string } = {}) =>
@@ -57,11 +64,11 @@ export const field = {
       } satisfies FieldMeta),
 
   /** 数値 */
-  number: (title: string, def: number, opts: { min?: number; max?: number; step?: number; description?: string } = {}) => {
+  number: (title: string, def: number, opts: { min?: number; max?: number; step?: number; description?: string; enabledBy?: string } = {}) => {
     let s = z.number();
     if (opts.min !== undefined) s = s.min(opts.min);
     if (opts.max !== undefined) s = s.max(opts.max);
-    return s.default(def).meta({ title, step: opts.step, description: opts.description } satisfies FieldMeta);
+    return s.default(def).meta({ title, step: opts.step, description: opts.description, ...(opts.enabledBy ? { enabledBy: opts.enabledBy } : {}) } satisfies FieldMeta);
   },
 
   /** 画像(projects/assets/ のファイル名)。空文字は「画像なし」 */
