@@ -32,8 +32,9 @@ const enc = encodeURIComponent;
 export const api = {
   list: () => call<{ projects: string[] }>('/api/projects').then((r) => r.projects),
   load: (name: string) => call<{ project: Project }>(`/api/projects/${enc(name)}`).then((r) => r.project),
-  save: (name: string, project: Project) =>
-    call<{ project: Project }>(`/api/projects/${enc(name)}`, { method: 'PUT', body: JSON.stringify(project) }).then((r) => r.project),
+  /** auto: 自動保存(サーバーは前の版を 10 分おきにだけ残す) */
+  save: (name: string, project: Project, auto = false) =>
+    call<{ project: Project }>(`/api/projects/${enc(name)}${auto ? '?auto=1' : ''}`, { method: 'PUT', body: JSON.stringify(project) }).then((r) => r.project),
   startRender: (name: string, project: Project, format: string, quality = 'normal', scene = 0) =>
     call<{ job: RenderJob }>('/api/render', { method: 'POST', body: JSON.stringify({ name, project, format, quality, scene }) }).then((r) => r.job),
   renderJobs: () => call<{ jobs: RenderJob[] }>('/api/render').then((r) => r.jobs),

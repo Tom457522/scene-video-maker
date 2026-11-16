@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { assetUrl, uploadAsset, useAssets } from './assets';
 import { cancelPick, startPick, usePick } from './pick';
 import { Icon, ICON_OPTIONS } from '../kit/icons';
+import { showAlert } from './dialogs';
 
 export type JsonSchema = {
   type?: string | string[];
@@ -164,7 +165,7 @@ const AssetField = ({ value, onChange }: Omit<FieldProps, 'label' | 'schema'>) =
               try {
                 onChange(await uploadAsset(file));
               } catch (err) {
-                window.alert(`画像を追加できませんでした: ${(err as Error).message}`);
+                void showAlert('画像を追加できませんでした', (err as Error).message);
               } finally {
                 setBusy(false);
               }

@@ -1,6 +1,9 @@
-/** エディタ画面(上部バー + 3 列: シーン一覧 / プレビュー / 設定) */
+/**
+ * エディタ画面(上部バー + 3 列: シーン一覧 / プレビュー / 設定)。シーンが 1 つもないときは最初の画面を出す。
+ * 変更は少し待ってから自動で保存する(Ctrl+S ですぐに保存し、前の版として残す)。
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getPart, parts } from '../parts/registry';
+import { getPart, resolveProps } from '../parts/registry';
 import { defaultSettings, sceneTimeline, totalFrames, type Project } from '../video/project';
 import { api, type RenderJob } from './api';
 import { clearDraft, formatDraftTime, loadDraft, saveDraft } from './drafts';
@@ -8,36 +11,35 @@ import { useHistory } from './history';
 import { Preview, type PreviewHandle } from './Preview';
 import { SceneList } from './SceneList';
 import { SceneSettings } from './SceneSettings';
-import { TopBar } from './TopBar';
+import { TopBar, type SaveState } from './TopBar';
 import { EXPORT_FORMATS, QUALITIES, type ExportFormat, type Quality } from '../remotion/composition-id';
-import { BatchDialog, ExportsDialog } from './ExportsDialog';
+import { BatchDialog } from './ExportsDialog';
+import { ExportDialog } from './ExportDialog';
 import { VideoSettings } from './VideoSettings';
 import { HistoryDialog } from './HistoryDialog';
 import { ReplaceDialog } from './ReplaceDialog';
-import { OutlineDialog } from './OutlineDialog';
 import { ChaptersDialog } from './ChaptersDialog';
-import { NewProjectDialog } from './NewProjectDialog';
 import { AssetsDialog } from './AssetsDialog';
-import { copyScenes, readCopiedScenes } from './clipboard';
+import { AddSceneDialog, ChangePartDialog, type AddTab } from './AddSceneDialog';
+import { TemplateDialog } from './TemplateDialog';
+import { KeysDialog } from './KeysDialog';
+import { StartPanel } from './StartPanel';
+import { DialogHost, askConfirm, askText, showAlert } from './dialogs';
+import { findIssues, lostFields, type Issue } from './guide';
+import type { MenuEntry } from './Modal';
+import { copyScenes, readCopiedScenes, useCopiedScenes } from './clipboard';
 import { replaceAll } from './replace';
 import { buildCues, toSrt } from '../video/srt';
-import { resolveProps } from '../parts/registry';
 import { fromProject, newKey, newScene, switchPart, toProject, type EditorProject, type EditorScene } from './state';
 
 const LAST_KEY = 'scene-video-maker:last';
+const FORMAT_KEY = 'scene-video-maker:format';
+const QUALITY_KEY = 'scene-video-maker:quality';
 const NAME_RE = /^[\p{L}\p{N}_\- ]{1,60}$/u;
 /** 最後の変更からこの時間(ミリ秒)たったら下書きを残す */
 const DRAFT_DELAY = 800;
-
-const askName = (message: string, initial: string): string | null => {
-  const name = window.prompt(`${message}\n(日本語・英数字・空白・_ - が使えます。60 文字まで)`, initial)?.trim();
-  if (!name) return null;
-  if (!NAME_RE.test(name)) {
-    window.alert('使えない文字が含まれています');
-    return null;
-  }
-  return name;
-};
+/** 最後の変更からこの時間(ミリ秒)たったら自動で保存する */
+const AUTO_SAVE_DELAY = 1500;
 
 const safeStorage = {
   get: (k: string) => {
@@ -56,18 +58,33 @@ const safeStorage = {
   },
 };
 
-/** 下書きが残っていれば復元するか尋ねる。復元するならその内容、しないなら null(下書きは消す) */
-const askRestore = (name: string, saved: Project | null): Project | null => {
+/** 名前を尋ねる(使えない文字・同じ名前は、その場で知らせる) */
+const askName = (title: string, ok: string, initial: string, taken: string[]) =>
+  askText({
+    title,
+    message: '名前(日本語・英数字・空白・_ - が使えます。60 文字まで)',
+    ok,
+    initial,
+    validate: (v) => (v === '' ? '' : !NAME_RE.test(v) ? '使えない文字が含まれています' : taken.includes(v) ? '同じ名前の動画があります' : ''),
+  });
+
+/**
+ * 保存できなかった変更の下書きが残っていれば、復元するか尋ねる。
+ * 復元するならその内容、しないなら null(下書きは消す)
+ */
+const askRestore = async (name: string, saved: Project | null): Promise<Project | null> => {
   const draft = loadDraft(name);
   if (!draft) return null;
   if (saved && JSON.stringify(draft.project) === JSON.stringify(saved)) {
     clearDraft(name);
     return null;
   }
-  const ok = window.confirm(
-    `「${name}」に、保存していない変更の下書きが残っています(${formatDraftTime(draft.at)})。\n\n` +
-      'OK: 下書きを復元する(まだ保存はされません)\nキャンセル: 下書きを捨てる',
-  );
+  const ok = await askConfirm({
+    title: '保存されていない変更があります',
+    message: `「${name}」に、保存されていない変更の下書きが残っています(${formatDraftTime(draft.at)})。`,
+    ok: '下書きを復元する',
+    cancel: '下書きを捨てる',
+  });
   if (ok) return draft.project;
   clearDraft(name);
   return null;
@@ -77,58 +94,116 @@ const askRestore = (name: string, saved: Project | null): Project | null => {
 const allStrings = (v: unknown): string[] =>
   typeof v === 'string' ? [v] : Array.isArray(v) ? v.flatMap(allStrings) : v && typeof v === 'object' ? Object.values(v).flatMap(allStrings) : [];
 
-const emptyProject = (title: string): EditorProject => ({ title, settings: defaultSettings(), scenes: parts[0] ? [newScene(parts[0])] : [] });
+const emptyProject = (title: string): EditorProject => ({ title, settings: defaultSettings(), scenes: [] });
+
+/** シーンの見どころ(70% の時点)のフレーム。シーンの頭は登場前で何も映っていないことが多いため */
+const highlightFrame = (scenes: EditorScene[], i: number) => {
+  const t = sceneTimeline({ scenes })[i];
+  return t ? t.from + Math.floor(t.durationInFrames * 0.7) : 0;
+};
+
+type Dialog =
+  | null
+  | { kind: 'add'; tab: AddTab }
+  | { kind: 'change' | 'template' | 'keys' | 'export' | 'history' | 'replace' | 'chapters' | 'assets' | 'batch' };
 
 export const App = () => {
   const [projects, setProjects] = useState<string[]>([]);
   const [name, setName] = useState('');
   const history = useHistory<EditorProject>({ title: '', settings: defaultSettings(), scenes: [] });
   const doc = history.value;
+  /** サーバーに保存してある内容(JSON)。まだ一度も保存していなければ '' */
   const [saved, setSaved] = useState<string>('');
   const [selectedRaw, setSelected] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [message, setMessage] = useState('');
   const preview = useRef<PreviewHandle>(null);
-  /** 開いているダイアログ */
-  const [dialog, setDialog] = useState<null | 'history' | 'replace' | 'outline' | 'chapters' | 'new' | 'assets' | 'jobs' | 'batch'>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
   const [stillBusy, setStillBusy] = useState(false);
   /** 右列のタブ: 選んだシーンの設定 / 動画全体の設定 */
   const [rightTab, setRightTab] = useState<'scene' | 'video'>('scene');
-  const [format, setFormat] = useState<ExportFormat>('720p');
-  const [quality, setQuality] = useState<Quality>('normal');
+  const [format, setFormatRaw] = useState<ExportFormat>(() => {
+    const f = safeStorage.get(FORMAT_KEY);
+    return f && f in EXPORT_FORMATS ? (f as ExportFormat) : '720p';
+  });
+  const [quality, setQualityRaw] = useState<Quality>(() => {
+    const q = safeStorage.get(QUALITY_KEY);
+    return q && q in QUALITIES ? (q as Quality) : 'normal';
+  });
+  const setFormat = (f: ExportFormat) => {
+    setFormatRaw(f);
+    safeStorage.set(FORMAT_KEY, f);
+  };
+  const setQuality = (q: Quality) => {
+    setQualityRaw(q);
+    safeStorage.set(QUALITY_KEY, q);
+  };
+  const copied = useCopiedScenes();
+  /** 読み込んだあと、プレビューが新しい内容になってから移る位置 */
+  const seekAfterLoad = useRef<number | null>(null);
 
   // 元に戻したときにシーンが減っていても、選択がはみ出さないようにする
   const selected = Math.min(selectedRaw, Math.max(0, doc.scenes.length - 1));
 
   const project = useMemo(() => toProject(doc), [doc]);
   const snapshot = useMemo(() => JSON.stringify(project), [project]);
-  const dirty = snapshot !== saved;
+  const dirty = loaded && snapshot !== saved;
   const timeline = useMemo(() => sceneTimeline(project), [project]);
+  const issues = useMemo(() => findIssues(project.scenes), [project]);
+  const saveState: SaveState = saving ? 'saving' : saveError ? 'error' : dirty ? 'pending' : 'saved';
+
+  useEffect(() => {
+    if (seekAfterLoad.current === null || !preview.current) return;
+    preview.current.seekTo(seekAfterLoad.current);
+    seekAfterLoad.current = null;
+  }, [project]);
 
   const flash = useCallback((text: string) => {
     setMessage(text);
-    window.setTimeout(() => setMessage((m) => (m === text ? '' : m)), 3000);
+    window.setTimeout(() => setMessage((m) => (m === text ? '' : m)), 3500);
   }, []);
 
   const { reset } = history;
+  /** 内容を入れ替えて、最初のシーンの見どころを映す */
+  const load = useCallback(
+    (n: string, p: Project, savedJson: string) => {
+      const ed = fromProject(p);
+      setName(n);
+      reset(ed);
+      setSaved(savedJson);
+      setSaveError(false);
+      setSelected(0);
+      setLoaded(true);
+      seekAfterLoad.current = highlightFrame(ed.scenes, 0);
+      safeStorage.set(LAST_KEY, n);
+    },
+    [reset],
+  );
+
+  /**
+   * 動画が 1 つもないときの、まだ名前だけの空の動画。何か変えるまでは保存しない
+   * (触っていないのに空のファイルができないように、保存済みと同じ扱いにする)
+   */
+  const loadPlaceholder = useCallback(() => {
+    const p = toProject(emptyProject(''));
+    load('新しい動画', p, JSON.stringify(p));
+  }, [load]);
+
   const open = useCallback(
     async (n: string) => {
       try {
         const p = await api.load(n);
-        const restored = askRestore(n, p);
-        setName(n);
-        reset(fromProject(restored ?? p));
-        setSaved(JSON.stringify(p));
-        setSelected(0);
-        preview.current?.seekTo(0);
-        safeStorage.set(LAST_KEY, n);
-        if (restored) setMessage('下書きを復元しました(まだ保存していません)');
+        const restored = await askRestore(n, p);
+        load(n, restored ?? p, JSON.stringify(p));
+        if (restored) setMessage('下書きを復元しました');
       } catch (e) {
-        window.alert(`読み込めませんでした: ${(e as Error).message}`);
+        void showAlert('読み込めませんでした', (e as Error).message);
       }
     },
-    [reset],
+    [load],
   );
 
   // 起動時: 前回のプロジェクト → sample → 先頭 の順に開く。
@@ -139,25 +214,56 @@ export const App = () => {
       setProjects(list);
       const last = safeStorage.get(LAST_KEY);
       if (last && !list.includes(last)) {
-        const restored = askRestore(last, null);
+        const restored = await askRestore(last, null);
         if (restored) {
-          setName(last);
-          reset(fromProject(restored));
-          setSaved('');
-          setMessage('下書きを復元しました(まだ保存していません)');
+          load(last, restored, '');
+          setMessage('下書きを復元しました');
           return;
         }
       }
       const first = last && list.includes(last) ? last : list.includes('sample') ? 'sample' : list[0];
       if (first) await open(first);
-      else {
-        setName('新しい動画');
-        reset(emptyProject(''));
-      }
+      else loadPlaceholder();
     })();
-  }, [open, reset]);
+  }, [open, load, loadPlaceholder]);
 
-  // 下書きの自動保存: 変更があれば少し待ってから残し、変更がなくなれば消す
+  /** 今の内容を保存する。auto は自動保存(前の版を残す間隔をあける) */
+  const saveNow = useCallback(
+    async (opts: { auto?: boolean; as?: string } = {}): Promise<boolean> => {
+      const target = opts.as ?? name;
+      if (!target) return false;
+      setSaving(true);
+      try {
+        const p = await api.save(target, project, opts.auto);
+        setSaved(JSON.stringify(p));
+        setSaveError(false);
+        if (target !== name) clearDraft(name);
+        clearDraft(target);
+        if (target !== name) {
+          setName(target);
+          safeStorage.set(LAST_KEY, target);
+        }
+        if (!projects.includes(target)) setProjects(await api.list());
+        return true;
+      } catch (e) {
+        setSaveError(true);
+        if (!opts.auto) void showAlert('保存できませんでした', (e as Error).message);
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [name, project, projects],
+  );
+
+  // 自動保存: 変更が止まって少したったら保存する(保存できなかったときは下書きが残る)
+  useEffect(() => {
+    if (!dirty || saving || saveError || !name) return;
+    const t = window.setTimeout(() => void saveNow({ auto: true }), AUTO_SAVE_DELAY);
+    return () => window.clearTimeout(t);
+  }, [dirty, saving, saveError, name, saveNow, snapshot]);
+
+  // 下書き: 保存できていない変更をブラウザの中にも残す(保存できたら消す)
   useEffect(() => {
     if (!name) return;
     if (!dirty) {
@@ -190,37 +296,21 @@ export const App = () => {
     };
   }, []);
 
-  /** 変更を捨ててよいか確かめる。捨てるなら下書きも消す */
-  const confirmDiscard = () => {
+  /** 別の動画に移る前に、今の変更を保存する。保存できなければ、捨ててよいか尋ねる */
+  const leaveCurrent = async (): Promise<boolean> => {
     if (!dirty) return true;
-    if (!window.confirm('保存していない変更があります。破棄してよいですか?')) return false;
-    clearDraft(name);
-    return true;
+    if (await saveNow({ auto: true })) return true;
+    const ok = await askConfirm({ title: '保存できませんでした', message: '今の変更を保存できませんでした。変更を捨てて移りますか?', ok: '変更を捨てる', danger: true });
+    if (ok) clearDraft(name);
+    return ok;
   };
 
-  const saveAs = async (n: string) => {
-    setSaving(true);
-    try {
-      const p = await api.save(n, project);
-      setSaved(JSON.stringify(p));
-      if (n !== name) clearDraft(name);
-      clearDraft(n);
-      setName(n);
-      safeStorage.set(LAST_KEY, n);
-      setProjects(await api.list());
-      flash(`projects/${n}.json に保存しました`);
-    } catch (e) {
-      window.alert(`保存できませんでした:\n${(e as Error).message}`);
-    } finally {
-      setSaving(false);
-    }
+  /** 手で保存する(Ctrl+S)。前の版として残る */
+  const save = async () => {
+    if (await saveNow()) flash('保存しました(前の版としても残ります)');
   };
-  const save = () => saveAs(name);
 
-  /**
-   * 編集した結果が見えるように、止まっているときは編集中のシーンの見どころ(70%)へ移る。
-   * (シーンの頭は登場前で何も映っていないことが多いため。すでに後半を見ているなら動かさない)
-   */
+  /** 選んでいるシーンの見どころへ移る(止まっているとき。すでに後半を見ているなら動かさない) */
   const revealScene = (i: number, scenes: EditorScene[]) => {
     if (preview.current?.isPlaying()) return;
     const t = sceneTimeline({ scenes })[i];
@@ -233,11 +323,18 @@ export const App = () => {
   /** シーンの並びを変える。group を渡すと続けての変更(文字入力など)を 1 回の「元に戻す」にまとめる */
   const updateScenes = (scenes: EditorScene[], group?: string) => history.set((d) => ({ ...d, scenes }), group);
 
+  /** シーンの並びが新しくなったあとに、i 番目のシーンを選んで見どころを映す */
+  const showScene = (scenes: EditorScene[], i: number) => {
+    setSelected(i);
+    setRightTab('scene');
+    seekAfterLoad.current = highlightFrame(scenes, i);
+  };
+
   const select = (i: number) => {
     setSelected(i);
     setRightTab('scene');
     const t = timeline[i];
-    if (t) preview.current?.seekTo(t.from);
+    if (t) preview.current?.seekTo(t.from + Math.floor(t.durationInFrames * 0.7));
   };
 
   const changeScene = (i: number, scene: EditorScene, group?: string) => {
@@ -246,14 +343,15 @@ export const App = () => {
     revealScene(i, scenes);
   };
 
+  /** シーンを入れる位置(選んでいるシーンの後ろ) */
+  const insertAt = doc.scenes.length === 0 ? 0 : selected + 1;
+
   const addScene = (partId: string) => {
     const part = getPart(partId);
     if (!part) return;
-    const at = doc.scenes.length === 0 ? 0 : selected + 1;
-    const scenes = [...doc.scenes.slice(0, at), newScene(part), ...doc.scenes.slice(at)];
+    const scenes = [...doc.scenes.slice(0, insertAt), newScene(part), ...doc.scenes.slice(insertAt)];
     updateScenes(scenes);
-    setSelected(at);
-    preview.current?.seekTo(sceneTimeline({ scenes })[at].from);
+    showScene(scenes, insertAt);
   };
 
   const duplicate = (i: number) => {
@@ -265,13 +363,14 @@ export const App = () => {
   const remove = (i: number) => {
     updateScenes(doc.scenes.filter((_, j) => j !== i));
     setSelected((s) => Math.max(0, Math.min(s > i ? s - 1 : s, doc.scenes.length - 2)));
+    flash(`シーン ${i + 1} を削除しました(Ctrl+Z で戻せます)`);
   };
 
   const copyScene = (i: number) => {
     const s = doc.scenes[i];
     if (!s) return;
     copyScenes([s]);
-    flash(`シーン ${i + 1} をコピーしました(別のプロジェクトにも貼り付けられます)`);
+    flash(`シーン ${i + 1} をコピーしました(別の動画にも貼り付けられます)`);
   };
 
   const copyAllScenes = () => {
@@ -282,12 +381,12 @@ export const App = () => {
 
   /** コピーしたシーンを、選んでいるシーンの後ろに貼り付ける */
   const pasteScenes = () => {
-    const copied = readCopiedScenes();
-    if (!copied) return flash('コピーしたシーンがありません');
-    const at = doc.scenes.length === 0 ? 0 : selected + 1;
-    const pasted = copied.map((s) => ({ ...structuredClone(s), key: newKey() }));
-    updateScenes([...doc.scenes.slice(0, at), ...pasted, ...doc.scenes.slice(at)]);
-    setSelected(at);
+    const c = readCopiedScenes();
+    if (!c) return flash('コピーしたシーンがありません');
+    const pasted = c.map((s) => ({ ...structuredClone(s), key: newKey() }));
+    const scenes = [...doc.scenes.slice(0, insertAt), ...pasted, ...doc.scenes.slice(insertAt)];
+    updateScenes(scenes);
+    showScene(scenes, insertAt);
     flash(`${pasted.length} シーンを貼り付けました`);
   };
 
@@ -298,6 +397,38 @@ export const App = () => {
     updateScenes(scenes);
     const key = doc.scenes[selected]?.key;
     setSelected(Math.max(0, scenes.findIndex((s) => s.key === key)));
+  };
+
+  /** 種類を変える。引き継げなかった入力があれば知らせる */
+  const changePart = (id: string) => {
+    const part = getPart(id);
+    const scene = doc.scenes[selected];
+    if (!part || !scene || scene.part === id) return;
+    const next = switchPart(scene, part);
+    changeScene(selected, next);
+    const lost = lostFields(getPart(scene.part), scene.props, next.props);
+    flash(
+      lost.length > 0
+        ? `「${part.meta.name}」に変えました。${lost.join('・')} は引き継げませんでした(Ctrl+Z で戻せます)`
+        : `「${part.meta.name}」に変えました`,
+    );
+  };
+
+  /** 文章やひな形から作ったシーンを入れる */
+  const applyScenes = (scenes: EditorScene[], title: string, mode: 'replace' | 'append') => {
+    const next = mode === 'replace' ? scenes : [...doc.scenes, ...scenes];
+    history.set((d) => ({ ...d, title: mode === 'replace' && title ? title : d.title, scenes: next }));
+    showScene(next, mode === 'replace' ? 0 : doc.scenes.length);
+    flash(`${scenes.length} シーンを作りました`);
+  };
+
+  const goToIssue = (iss: Issue) => {
+    setDialog(null);
+    select(iss.scene);
+  };
+  const fixIssue = (iss: Issue) => {
+    const s = doc.scenes[iss.scene];
+    if (s && iss.fixSeconds !== undefined) changeScene(iss.scene, { ...s, seconds: iss.fixSeconds });
   };
 
   const onServer = projects.includes(name);
@@ -315,14 +446,14 @@ export const App = () => {
       URL.revokeObjectURL(url);
       flash(`${name}.zip を書き出しました(使っている画像も入っています)`);
     } catch (e) {
-      window.alert(`zip を書き出せませんでした: ${(e as Error).message}`);
+      void showAlert('zip を書き出せませんでした', (e as Error).message);
     }
   };
 
   const zipInput = useRef<HTMLInputElement>(null);
   /** zip から読み込んで、そのプロジェクトを開く */
   const importZip = async (file: File) => {
-    if (!confirmDiscard()) return;
+    if (!(await leaveCurrent())) return;
     try {
       const data = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
@@ -339,7 +470,7 @@ export const App = () => {
       const renamed = Object.entries(body.renamed ?? {});
       flash(`「${body.name}」として読み込みました${renamed.length ? `(同じ名前の別の画像があったので ${renamed.map(([a, b]) => `${a} → ${b}`).join('、')} に変えました)` : ''}`);
     } catch (e) {
-      window.alert(`zip を読み込めませんでした: ${(e as Error).message}`);
+      void showAlert('zip を読み込めませんでした', (e as Error).message);
     }
   };
 
@@ -351,7 +482,7 @@ export const App = () => {
       return part ? resolveProps(part, s.props).props : s.props;
     });
     if (cues.length === 0) {
-      window.alert('字幕のあるシーンがありません。字幕の入力欄(流れ図・横棒グラフなど)に文を書くと、字幕ファイルに入ります。');
+      void showAlert('字幕のあるシーンがありません', '字幕の入力欄(流れ図・横棒グラフなど)に文を書くと、字幕ファイルに入ります。');
       return;
     }
     const url = URL.createObjectURL(new Blob([toSrt(cues)], { type: 'application/x-subrip;charset=utf-8' }));
@@ -374,32 +505,40 @@ export const App = () => {
       a.click();
       flash(`${file} を書き出しました`);
     } catch (e) {
-      window.alert(`PNG を書き出せませんでした: ${(e as Error).message}`);
+      void showAlert('PNG を書き出せませんでした', (e as Error).message);
     } finally {
       setStillBusy(false);
     }
   };
 
-  const newProject = () => {
-    if (!confirmDiscard()) return;
-    setDialog('new');
+  /** 新しい動画: 名前だけ決めて、最初の画面(作り方を選ぶ)を出す */
+  const newProject = async () => {
+    if (!(await leaveCurrent())) return;
+    let base = '新しい動画';
+    for (let i = 2; projects.includes(base); i++) base = `新しい動画 ${i}`;
+    const n = await askName('新しい動画を作る', '作る', base, projects);
+    if (!n) return;
+    clearDraft(n);
+    load(n, toProject(emptyProject('')), '');
   };
 
-  const createProject = (n: string, scenes: EditorScene[] | null) => {
-    clearDraft(n);
-    setName(n);
-    reset(scenes ? { title: n, settings: defaultSettings(), scenes } : emptyProject(n));
-    setSaved('');
-    setSelected(0);
-    safeStorage.set(LAST_KEY, n);
-    preview.current?.seekTo(0);
-    flash(scenes ? `ひな形から ${scenes.length} シーンを作りました(まだ保存していません)` : '新しいプロジェクトを作りました');
+  const openProject = async (n: string) => {
+    if (n === name || !(await leaveCurrent())) return;
+    await open(n);
+  };
+
+  /** 別の名前でコピーを作り、そちらを開く */
+  const saveAsCopy = async () => {
+    const n = await askName('コピーして別の動画にする', 'コピーを作る', `${name} のコピー`, projects);
+    if (!n) return;
+    if (await saveNow({ as: n })) flash(`「${n}」を作りました(これからは「${n}」を編集します)`);
   };
 
   const renameCurrent = async () => {
-    const n = askName('新しい名前', name);
+    const n = await askName('名前を変える', '変える', name, projects.filter((p) => p !== name));
     if (!n || n === name) return;
-    if (projects.includes(n)) return window.alert('同じ名前のプロジェクトがあります');
+    // 名前を変えたあとに、前の名前で自動保存されないよう、先に保存しておく
+    if (dirty && onServer && !(await saveNow({ auto: true }))) return;
     try {
       if (onServer) await api.rename(name, n);
       clearDraft(name);
@@ -408,27 +547,32 @@ export const App = () => {
       setProjects(await api.list());
       flash(`名前を「${n}」に変えました`);
     } catch (e) {
-      window.alert(`名前を変えられませんでした: ${(e as Error).message}`);
+      void showAlert('名前を変えられませんでした', (e as Error).message);
     }
   };
 
   const deleteCurrent = async () => {
-    if (!window.confirm(`「${name}」を削除しますか?\n(ファイルは projects/.trash/ に移るので、手で戻すこともできます)`)) return;
+    const ok = await askConfirm({
+      title: 'この動画を削除',
+      message: `「${name}」を削除しますか?\n(ファイルは projects/.trash/ に移るので、手で戻すこともできます)`,
+      ok: '削除する',
+      danger: true,
+    });
+    if (!ok) return;
+    // 消している間に自動保存で作り直さないよう、いったん読み込み前の状態にする
+    setLoaded(false);
     try {
       if (onServer) await api.remove(name);
       clearDraft(name);
       const list = await api.list();
       setProjects(list);
-      setSaved(snapshot); // 削除したプロジェクトの「保存していない変更」の確認を出さない
+      const removed = name;
       if (list[0]) await open(list[0]);
-      else {
-        setName('新しい動画');
-        reset(emptyProject(''));
-        setSaved('');
-      }
-      flash(`「${name}」を削除しました`);
+      else loadPlaceholder();
+      flash(`「${removed}」を削除しました`);
     } catch (e) {
-      window.alert(`削除できませんでした: ${(e as Error).message}`);
+      setLoaded(true);
+      void showAlert('削除できませんでした', (e as Error).message);
     }
   };
 
@@ -450,12 +594,12 @@ export const App = () => {
       flash(`「${job.label}」を順番待ちに入れました`);
       void refreshJobs();
     } catch (e) {
-      window.alert(`書き出しを始められませんでした: ${(e as Error).message}`);
+      void showAlert('書き出しを始められませんでした', (e as Error).message);
     }
   };
 
   // キーボード: スペース 再生/停止、Ctrl+S 保存、Ctrl+Z 元に戻す、Ctrl+Shift+Z / Ctrl+Y やり直し、
-  // ↑↓ シーンを選ぶ、Alt+↑↓ 並べ替え、Ctrl+D 複製、Ctrl+C / Ctrl+V コピー・貼り付け、Delete 削除、L シーンを繰り返す(入力欄の外のみ)
+  // ↑↓ シーンを選ぶ、Alt+↑↓ 並べ替え、Ctrl+D 複製、Ctrl+C / Ctrl+V コピー・貼り付け、Delete 削除、L シーンを繰り返す、? キー操作の一覧(入力欄の外のみ)
   const sceneKeys = {
     selectBy: (d: number) => doc.scenes.length > 0 && select(Math.max(0, Math.min(doc.scenes.length - 1, selected + d))),
     moveBy: (d: number) => {
@@ -466,10 +610,16 @@ export const App = () => {
     copy: () => copyScene(selected),
     paste: pasteScenes,
     remove: () => doc.scenes[selected] && remove(selected),
+    keys: () => setDialog({ kind: 'keys' }),
   };
   const keys = useRef({ save, undo: history.undo, redo: history.redo, ...sceneKeys });
   useEffect(() => {
     keys.current = { save, undo: history.undo, redo: history.redo, ...sceneKeys };
+  });
+  const dialogOpen = dialog !== null;
+  const dialogRef = useRef(dialogOpen);
+  useEffect(() => {
+    dialogRef.current = dialogOpen;
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -480,6 +630,10 @@ export const App = () => {
         void keys.current.save();
         return;
       }
+      const t = e.target as HTMLElement;
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable;
+      // ダイアログの中では、シーンの操作はしない
+      if (dialogRef.current || document.querySelector('.modal-back')) return;
       // 入力欄の中でも、ブラウザの元に戻すではなくアプリの履歴を使う(入力欄の値はアプリが持っているため)
       if (mod && k === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -491,8 +645,6 @@ export const App = () => {
         keys.current.redo();
         return;
       }
-      const t = e.target as HTMLElement;
-      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable;
       if (typing) return;
       const k2 = keys.current;
       if (e.key === ' ') {
@@ -519,22 +671,47 @@ export const App = () => {
       } else if (!mod && k === 'l') {
         e.preventDefault();
         preview.current?.toggleLoop();
+      } else if (e.key === '?') {
+        e.preventDefault();
+        k2.keys();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const projectMenu: MenuEntry[] = [
+    { kind: 'heading', label: '動画を開く' },
+    ...(onServer ? [] : [{ label: name, onClick: () => undefined, current: true, note: 'まだ保存していません' }]),
+    ...projects.map((n): MenuEntry => ({ label: n, onClick: () => void openProject(n), current: n === name, note: n === name ? '編集中' : undefined })),
+    { label: '新しい動画を作る', icon: 'plus', onClick: () => void newProject() },
+    { kind: 'separator' },
+    { kind: 'heading', label: 'この動画' },
+    { label: '名前を変える', icon: 'edit', onClick: () => void renameCurrent() },
+    { label: 'コピーして別の動画にする', icon: 'copy', onClick: () => void saveAsCopy() },
+    { label: '前の版に戻す…', icon: 'history', onClick: () => setDialog({ kind: 'history' }), disabled: !onServer, hint: '一度も保存していない動画には前の版がありません' },
+    { kind: 'separator' },
+    { kind: 'heading', label: 'ほかの PC とやりとり' },
+    { label: 'zip で持ち出す(画像も入る)', icon: 'download', onClick: () => void exportZip(), hint: '別の PC に移したり、人に渡したりするときに' },
+    { label: 'zip から読み込む…', icon: 'upload', onClick: () => zipInput.current?.click() },
+    { kind: 'separator' },
+    { label: '画像の整理…', icon: 'image', onClick: () => setDialog({ kind: 'assets' }) },
+    { label: 'この動画を削除', icon: 'trash', onClick: () => void deleteCurrent(), danger: true },
+  ];
+
   const tabs = (
-    <div className="tabs">
-      <button type="button" className={rightTab === 'scene' ? 'on' : ''} onClick={() => setRightTab('scene')}>
-        シーン
+    <div className="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected={rightTab === 'scene'} className={rightTab === 'scene' ? 'on' : ''} onClick={() => setRightTab('scene')}>
+        このシーン
       </button>
-      <button type="button" className={rightTab === 'video' ? 'on' : ''} onClick={() => setRightTab('video')}>
-        動画全体
+      <button type="button" role="tab" aria-selected={rightTab === 'video'} className={rightTab === 'video' ? 'on' : ''} onClick={() => setRightTab('video')}>
+        動画全体(テーマ・ロゴ)
       </button>
     </div>
   );
+
+  const empty = loaded && doc.scenes.length === 0;
+  const close = () => setDialog(null);
 
   return (
     <div className="app">
@@ -550,165 +727,147 @@ export const App = () => {
         }}
       />
       <TopBar
-        projects={projects}
         name={name}
         title={doc.title}
+        sceneCount={doc.scenes.length}
         totalFrames={totalFrames(project)}
-        dirty={dirty}
-        saving={saving}
+        saveState={saveState}
         jobs={jobs}
         message={message}
+        issues={issues}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
         onUndo={history.undo}
         onRedo={history.redo}
-        onOpen={(n) => confirmDiscard() && void open(n)}
-        projectMenu={[
-          { label: '新規(ひな形から選べる)…', onClick: newProject },
-          {
-            label: '別名で保存',
-            onClick: () => {
-              const n = askName('別の名前で保存', `${name} のコピー`);
-              if (!n) return;
-              if (projects.includes(n) && !window.confirm(`「${n}」を上書きしますか?`)) return;
-              void saveAs(n);
-            },
-          },
-          { label: '名前を変更', onClick: () => void renameCurrent() },
-          { label: '保存の履歴から開く…', onClick: () => setDialog('history'), disabled: !onServer, hint: '一度も保存していないプロジェクトには履歴がありません' },
-          { label: 'zip に書き出す(画像も入れる)', onClick: () => void exportZip(), hint: '別の PC に移したり、人に渡したりするときに' },
-          { label: 'zip から読み込む…', onClick: () => zipInput.current?.click() },
-          { label: '削除', onClick: () => void deleteCurrent() },
-        ]}
-        toolMenu={[
-          { label: '文章からシーンを作る…', onClick: () => setDialog('outline') },
-          { label: 'すべてのシーンをコピー', onClick: copyAllScenes, hint: '別のプロジェクトで Ctrl+V(または「貼り付け」)で貼り付けられます' },
-          { label: '一括置換…', onClick: () => setDialog('replace') },
-          { label: '動画全体の設定', onClick: () => setRightTab('video') },
-          { label: '画像の管理…', onClick: () => setDialog('assets') },
-          { label: '部品の見本ページ(新しいタブ)', onClick: () => window.open('/?gallery', '_blank') },
-          { label: 'まとめて書き出し…', onClick: () => setDialog('batch'), hint: '複数のプロジェクト・形式をまとめて順番待ちに入れる' },
-          { label: '書き出しの一覧', onClick: () => setDialog('jobs') },
-          { label: 'YouTube の章の時刻…', onClick: () => setDialog('chapters') },
-          { label: '字幕ファイル(SRT)を書き出す', onClick: exportSrt, hint: '各シーンの「字幕」に書いた文を、そのシーンの時間に並べます' },
-        ]}
-        onShowJobs={() => setDialog('jobs')}
-        exportExtra={
-          <>
-            <select value={format} onChange={(e) => setFormat(e.target.value as ExportFormat)} title="書き出す形式">
-              {Object.entries(EXPORT_FORMATS).map(([id, f]) => (
-                <option key={id} value={id} title={f.detail}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-            {EXPORT_FORMATS[format].codec !== 'gif' && (
-              <select value={quality} onChange={(e) => setQuality(e.target.value as Quality)} title="画質(ファイルの大きさ)">
-                {Object.entries(QUALITIES).map(([id, q]) => (
-                  <option key={id} value={id} title={q.detail}>
-                    {q.label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </>
-        }
+        projectMenu={projectMenu}
         onTitle={(title) => history.set((d) => ({ ...d, title }), 'title')}
         onSave={() => void save()}
-        onExport={() => void exportVideo()}
+        onIssue={goToIssue}
+        onFixIssue={fixIssue}
+        onExport={() => setDialog({ kind: 'export' })}
       />
-      <div className="columns">
-        <SceneList
-          settings={doc.settings}
-          scenes={doc.scenes}
-          selected={selected}
-          onSelect={select}
-          onAdd={addScene}
-          onDuplicate={duplicate}
-          onCopy={copyScene}
-          onPaste={pasteScenes}
-          onDelete={remove}
-          onMove={move}
+      {empty ? (
+        <StartPanel
+          onOutline={() => setDialog({ kind: 'add', tab: 'outline' })}
+          onTemplate={() => setDialog({ kind: 'template' })}
+          onKinds={() => setDialog({ kind: 'add', tab: 'kinds' })}
+          onImportZip={() => zipInput.current?.click()}
         />
-        <Preview ref={preview} project={project} selected={selected} onSelectScene={setSelected} />
-        {rightTab === 'video' ? (
-          <VideoSettings header={tabs} settings={doc.settings} onChange={(settings) => history.set((d) => ({ ...d, settings }), 'settings')} />
-        ) : (
-          <SceneSettings
-            header={tabs}
+      ) : (
+        <div className="columns">
+          <SceneList
             settings={doc.settings}
-            scene={doc.scenes[selected]}
-            index={selected}
-            onChange={(s, field) => changeScene(selected, s, `${s.key}:${field}`)}
-            onExportStill={() => void exportStill()}
-            stillBusy={stillBusy}
-            onSwitchPart={(id) => {
-              const part = getPart(id);
-              if (part && doc.scenes[selected]) changeScene(selected, switchPart(doc.scenes[selected], part));
-            }}
+            scenes={doc.scenes}
+            selected={selected}
+            onSelect={select}
+            onOpenAdd={() => setDialog({ kind: 'add', tab: 'kinds' })}
+            onDuplicate={duplicate}
+            onCopy={copyScene}
+            onCopyAll={copyAllScenes}
+            onReplace={() => setDialog({ kind: 'replace' })}
+            onDelete={remove}
+            onMove={move}
           />
-        )}
-      </div>
-      {dialog === 'history' && (
+          <Preview ref={preview} project={project} selected={selected} onSelectScene={setSelected} onShowKeys={() => setDialog({ kind: 'keys' })} />
+          {rightTab === 'video' ? (
+            <VideoSettings header={tabs} settings={doc.settings} onChange={(settings) => history.set((d) => ({ ...d, settings }), 'settings')} />
+          ) : (
+            <SceneSettings
+              header={tabs}
+              settings={doc.settings}
+              scene={doc.scenes[selected]}
+              index={selected}
+              onChange={(s, field) => changeScene(selected, s, `${s.key}:${field}`)}
+              onChangePart={() => setDialog({ kind: 'change' })}
+              onExportStill={() => void exportStill()}
+              stillBusy={stillBusy}
+            />
+          )}
+        </div>
+      )}
+      {dialog?.kind === 'add' && (
+        <AddSceneDialog
+          where={doc.scenes.length === 0 ? '最初のシーンになります' : `シーン ${insertAt} の後ろに入ります`}
+          initialTab={dialog.tab}
+          hasScenes={doc.scenes.length > 0}
+          copied={copied}
+          onAdd={addScene}
+          onOutline={applyScenes}
+          onPaste={pasteScenes}
+          onClose={close}
+        />
+      )}
+      {dialog?.kind === 'change' && doc.scenes[selected] && <ChangePartDialog current={doc.scenes[selected].part} onPick={changePart} onClose={close} />}
+      {dialog?.kind === 'template' && <TemplateDialog onClose={close} onApply={(scenes, title) => applyScenes(scenes, title, 'replace')} />}
+      {dialog?.kind === 'keys' && <KeysDialog onClose={close} />}
+      {dialog?.kind === 'export' && (
+        <ExportDialog
+          title={doc.title}
+          sceneCount={doc.scenes.length}
+          totalFrames={totalFrames(project)}
+          selected={selected}
+          jobs={jobs}
+          issues={issues}
+          format={format}
+          quality={quality}
+          onFormat={setFormat}
+          onQuality={setQuality}
+          onStart={() => void exportVideo()}
+          onIssue={goToIssue}
+          onFixIssue={fixIssue}
+          onStill={() => void exportStill()}
+          stillBusy={stillBusy}
+          onSrt={exportSrt}
+          onChapters={() => setDialog({ kind: 'chapters' })}
+          onBatch={() => setDialog({ kind: 'batch' })}
+          onClose={close}
+        />
+      )}
+      {dialog?.kind === 'history' && (
         <HistoryDialog
           name={name}
-          onClose={() => setDialog(null)}
+          onClose={close}
           onOpen={(p, label) => {
             history.set(fromProject(p));
             setSelected(0);
-            setDialog(null);
-            flash(`${label} の版を開きました(まだ保存していません)`);
+            close();
+            flash(`${label} の版に戻しました(Ctrl+Z で今の内容に戻せます)`);
           }}
         />
       )}
-      {dialog === 'outline' && (
-        <OutlineDialog
-          hasScenes={doc.scenes.length > 0}
-          onClose={() => setDialog(null)}
-          onApply={(scenes, title, mode) => {
-            history.set((d) => ({
-              ...d,
-              title: mode === 'replace' && title ? title : d.title,
-              scenes: mode === 'replace' ? scenes : [...d.scenes, ...scenes],
-            }));
-            setSelected(mode === 'replace' ? 0 : doc.scenes.length);
-            flash(`${scenes.length} シーンを作りました`);
-          }}
-        />
-      )}
-      {dialog === 'jobs' && <ExportsDialog jobs={jobs} onClose={() => setDialog(null)} />}
-      {dialog === 'batch' && (
+      {dialog?.kind === 'batch' && (
         <BatchDialog
           current={name}
           currentProject={project}
           projects={projects}
-          onClose={() => setDialog(null)}
+          onClose={close}
           onQueued={(n) => {
             flash(`${n} 件を順番待ちに入れました`);
             void refreshJobs();
+            setDialog({ kind: 'export' });
           }}
         />
       )}
-      {dialog === 'assets' && (
+      {dialog?.kind === 'assets' && (
         <AssetsDialog
           current={name}
           // 編集中(まだ保存していない)の内容で使っている画像
           usedNow={new Set([doc.settings.logo, ...doc.scenes.flatMap((s) => allStrings(s.props))].filter(Boolean))}
-          onClose={() => setDialog(null)}
+          onClose={close}
         />
       )}
-      {dialog === 'new' && <NewProjectDialog existing={projects} onClose={() => setDialog(null)} onCreate={createProject} />}
-      {dialog === 'chapters' && <ChaptersDialog project={project} onClose={() => setDialog(null)} />}
-      {dialog === 'replace' && (
+      {dialog?.kind === 'chapters' && <ChaptersDialog project={project} onClose={close} />}
+      {dialog?.kind === 'replace' && (
         <ReplaceDialog
           project={doc}
-          onClose={() => setDialog(null)}
+          onClose={close}
           onReplace={(f, r) => {
             history.set((d) => replaceAll(d, f, r));
             flash(`「${f}」を「${r}」に置き換えました`);
           }}
         />
       )}
+      <DialogHost />
     </div>
   );
 };
