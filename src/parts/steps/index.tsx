@@ -45,7 +45,7 @@ export const schema = z.object({
 
 const DOT = 46;
 
-export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
+export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const n = props.steps.length;
   const top = layout.contentTop - 6;
   const bottom = props.caption.trim() === '' ? layout.contentBottomFull : layout.contentBottom;
@@ -55,7 +55,8 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
   const textX = layout.padX + dot + 34;
   const textW = 1280 - layout.padX - textX;
   const size = fitFontSizeToBox(props.steps, { maxWidth: textW, maxHeight: rowH - 8, max: 34, min: 14 });
-  const until = settleBy(durationInFrames, 0.5);
+  // ナレーションに合わせるときは、最後の項目が出たところを「出そろった」時点にする
+  const until = Math.max(settleBy(durationInFrames, 0.5), cues?.length ? stagger(n - 1, n, 0, 0, 10, cues) : 0);
   const line = draw(frame, 8, Math.max(12, until - 4));
   const done = back(frame, until + 6, 16);
   const doneBump = bump(frame, until + 20, 10);
@@ -78,7 +79,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
         />
       </svg>
       {props.steps.map((st, i) => {
-        const s = stagger(i, n, 10, until, 10);
+        const s = stagger(i, n, 10, until, 10, cues);
         const b = back(frame, s, T.enter);
         const t = progress(frame, s + 4, T.enter);
         const last = i === n - 1;

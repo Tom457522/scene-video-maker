@@ -61,7 +61,7 @@ const GAP = 24;
 
 const decimalsOf = (v: number): number => Math.min(2, (String(v).split('.')[1] ?? '').length);
 
-export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
+export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const n = props.rows.length;
   const hasCaption = props.caption.trim() !== '';
   const top = layout.contentTop + 8;
@@ -105,7 +105,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
       </svg>
 
       {props.rows.map((row, i) => {
-        const s = stagger(i, n, 14, settleBy(durationInFrames, 0.45), 10);
+        const s = stagger(i, n, 14, settleBy(durationInFrames, 0.45), 10, cues);
         const grow = progress(frame, s, 32, ease.out);
         const labelIn = progress(frame, s - 4, T.enter);
         const ratio = Math.min(1, Math.max(0, row.value / maxValue));

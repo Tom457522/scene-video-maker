@@ -12,6 +12,8 @@ import { LAYOUT_LOG_PREFIX, checkLayout } from './layout-check';
 import { buildChapters, type Chapter } from './chapters';
 import { ChapterBar, EndCard, TopRight } from './overlays';
 import { END_CARD_FRAMES, defaultSettings, scenesFrames, sceneTimeline, type Project, type Scene, type Settings } from './project';
+import { cueFrames } from './narration';
+import { Bgm, NarrationSubtitle, SceneSound, SourceNote, SUBTITLE_SCALE, bgmFrames } from './sound';
 
 export type ProjectVideoProps = {
   project: Project;
@@ -76,18 +78,27 @@ const useLayoutProbe = (root: React.RefObject<HTMLDivElement | null>, enabled: b
 
 export { useChapters };
 
-const SceneBody = ({ part, scene, index, check, transition }: { part: PartDef; scene: Scene; index: number; check: boolean; transition: string }) => {
+const SceneBody = ({ part, scene, index, check, settings }: { part: PartDef; scene: Scene; index: number; check: boolean; settings: Settings }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, fps } = useVideoConfig();
   const root = useRef<HTMLDivElement>(null);
-  const { props } = resolveProps(part, scene.props);
+  const resolved = resolveProps(part, scene.props).props;
+  // ナレーションの字幕を出すときは、部品の字幕(caption)は出さず、本文を少し縮めて下を空ける
+  const subtitles = settings.subtitles !== false && !!scene.audio && scene.audio.lines.length > 0;
+  const props = subtitles && 'caption' in resolved ? { ...resolved, caption: '' } : resolved;
   useLayoutProbe(root, check, index, JSON.stringify(props));
+  const cues = cueFrames(scene, fps);
   const C = part.Component;
   return (
-    <SceneFrame frame={frame} durationInFrames={durationInFrames} transition={transition}>
-      <div ref={root} style={{ position: 'absolute', inset: 0 }}>
-        <C props={props} frame={frame} durationInFrames={durationInFrames} fps={fps} />
+    <SceneFrame frame={frame} durationInFrames={durationInFrames} transition={settings.transition}>
+      <div
+        ref={root}
+        style={{ position: 'absolute', inset: 0, ...(subtitles ? { transform: `scale(${SUBTITLE_SCALE})`, transformOrigin: '50% 4%' } : {}) }}
+      >
+        <C props={props} frame={frame} durationInFrames={durationInFrames} fps={fps} cues={cues} />
       </div>
+      {scene.source ? <SourceNote text={scene.source} subtitles={subtitles} /> : null}
+      {subtitles ? <NarrationSubtitle scene={scene} /> : null}
     </SceneFrame>
   );
 };
@@ -140,14 +151,16 @@ export const ProjectVideo = ({ project, checkLayout: check = false, embedded = f
           <Sequence key={i} from={timeline[i].from} durationInFrames={timeline[i].durationInFrames} name={`${i + 1}. ${scene.part}`}>
             {part ? (
               <PartBoundary partId={scene.part}>
-                <SceneBody part={part} scene={scene} index={i} check={check} transition={settings.transition} />
+                <SceneBody part={part} scene={scene} index={i} check={check} settings={settings} />
               </PartBoundary>
             ) : (
               <Notice title={`部品「${scene.part}」が見つかりません`} detail="src/parts/ にフォルダがあるか確かめてください" />
             )}
+            <SceneSound scene={scene} sfx={settings.sfx !== false} />
           </Sequence>
         );
       })}
+      {settings.bgm ? <Bgm project={{ ...project, settings }} total={bgmFrames({ ...project, settings }, scenesEnd)} /> : null}
       {settings.endCard && (
         <Sequence from={scenesEnd} durationInFrames={END_CARD_FRAMES} name="エンドカード">
           <EndCardScene settings={settings} />

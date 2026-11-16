@@ -27,6 +27,11 @@ export type PartProps<T> = {
   /** シーンの長さ(フレーム数) */
   durationInFrames: number;
   fps: number;
+  /**
+   * ナレーションに合わせて項目を出すフレーム(i 番目の項目 → cues[i])。ナレーションの音声がないときは undefined。
+   * 項目を順に出す部品は stagger(i, n, from, until, gap, cues) のように渡す。
+   */
+  cues?: readonly number[];
 };
 
 /** 部品の schema の型(必ず z.object) */

@@ -16,8 +16,10 @@ export const outlineToScenes = (
   const parsed = parseOutline(text);
   const scenes: { scene: EditorScene; notes: string[] }[] = [];
   for (const s of parsed.scenes) {
-    const part = lookup(s.part) ?? lookup('bullets');
+    const found = lookup(s.part);
+    const part = found ?? lookup('bullets');
     if (!part) continue;
+    const extra = [...(s.notes ?? []), ...(found ? [] : [`部品「${s.part}」はないため、箇条書きにしました`])];
     const fitted = fitToSchema(part.schema, s.props);
     const merged = { ...(part.schema.parse({}) as Record<string, unknown>), ...fitted.props };
     scenes.push({
@@ -26,8 +28,10 @@ export const outlineToScenes = (
         part: part.id,
         seconds: Math.min(60, Math.max(part.meta.defaultSeconds, recommendedSeconds(merged))),
         props: merged,
+        ...(s.narration ? { narration: s.narration } : {}),
+        ...(s.source ? { source: s.source } : {}),
       },
-      notes: fitted.notes,
+      notes: [...extra, ...fitted.notes],
     });
   }
   return { title: parsed.title, scenes };

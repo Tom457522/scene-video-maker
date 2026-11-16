@@ -38,3 +38,13 @@ test('youtubeChapters: 3 章未満や 10 秒未満の章に注意を出す', () 
   const ng = youtubeChapters(buildChapters({ scenes: [scene(4, { title: 'a' }), scene(10, { title: 'b' })] }));
   assert.equal(ng.warnings.length, 2);
 });
+
+test('mergeShortChapters: 10 秒に満たない章を前の章にまとめる', async () => {
+  const { mergeShortChapters } = await import('../src/video/chapters.ts');
+  const c = (label: string, from: number, sec: number, i: number) => ({ label, from: from * 30, durationInFrames: sec * 30, scenes: [i] });
+  const r = mergeShortChapters([c('a', 0, 4, 0), c('b', 4, 12, 1), c('c', 16, 6, 2), c('d', 22, 15, 3)]);
+  assert.deepEqual(r.map((x) => [x.label, x.durationInFrames / 30, x.scenes]), [
+    ['a', 22, [0, 1, 2]],
+    ['d', 15, [3]],
+  ]);
+});

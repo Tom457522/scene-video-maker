@@ -75,3 +75,46 @@ test('prepareImages: --images のフォルダから assets/ にコピーし、�
   const missing = make.outlineToProject(OUTLINE.replace('L002-1.svg', 'ない.png'), parts).project;
   await assert.rejects(make.prepareImages(missing, images, async () => null), /見つかりません/);
 });
+
+test('buildDescription: 目次・出典・クレジットを並べる', async () => {
+  const { parts } = await loadPartsInNode();
+  const { project } = make.outlineToProject(
+    `# 題\n\n## A\n- x\n出典: 調査 A\n\n## B\n- y\n出典: 調査 A\n\n## C\n- z\n出典: 調査 C`,
+    parts,
+  );
+  const scenes = project.scenes.map((s) => ({ ...s, seconds: 12 }));
+  const text = make.buildDescription({ ...project, scenes }, make.resolverFor({ ...project, scenes }, parts), 'VOICEVOX:ずんだもん');
+  assert.match(text, /■ 目次\n0:00 題\n0:12 A/);
+  assert.match(text, /■ 出典\n・調査 A\n・調査 C\n/);
+  assert.match(text, /VOICEVOX:ずんだもん/);
+});
+
+test('partSpec: 部品ごとの入力の上限を JSON Schema で出す', async () => {
+  const { parts } = await loadPartsInNode();
+  const spec = make.partSpec(parts);
+  const bullets = spec.find((p) => p.id === 'bullets')!;
+  const items = (bullets.props as { properties: Record<string, { maxItems?: number; items?: { maxLength?: number } }> }).properties.items;
+  assert.equal(items.maxItems, 6);
+  assert.equal(items.items?.maxLength, 60);
+});
+
+test('見本の台本(examples/空き家)は、数字がレポートと合い、質の検査も通る', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { checkFacts } = await import('../src/video/facts.ts');
+  const { checkQuality } = await import('../src/video/quality.ts');
+  const { parts } = await loadPartsInNode();
+  const root = path.join(import.meta.dirname, '..', 'examples', '空き家');
+  const { project, notes } = make.outlineToProject(readFileSync(path.join(root, '台本.md'), 'utf8'), parts);
+  assert.deepEqual(notes, []);
+  assert.ok(project.scenes.length >= 8 && project.scenes.length <= 14);
+  assert.ok(project.scenes.every((s) => s.narration));
+  assert.deepEqual(checkFacts(project, readFileSync(path.join(root, 'レポート.md'), 'utf8')).problems, []);
+  const q = checkQuality(project, make.resolverFor(project, parts));
+  assert.ok(q.score >= 90, JSON.stringify(q.items));
+});
+
+test('buildDescription: 引用の出典も「出典」に入れる', async () => {
+  const { parts } = await loadPartsInNode();
+  const { project } = make.outlineToProject(`# 題\n\n## 名言\n>> 知は力なり\n-- フランシス・ベーコン`, parts);
+  assert.match(make.buildDescription(project, make.resolverFor(project, parts), ''), /■ 出典\n・フランシス・ベーコン/);
+});

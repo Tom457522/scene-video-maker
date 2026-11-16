@@ -18,7 +18,15 @@ export const fromProject = (p: Project): EditorProject => ({
 export const toProject = (p: EditorProject): Project => ({
   title: p.title,
   settings: p.settings,
-  scenes: p.scenes.map(({ part, seconds, props, chapter }) => ({ part, seconds, props, ...(chapter?.trim() ? { chapter } : {}) })),
+  scenes: p.scenes.map(({ part, seconds, props, chapter, narration, source, audio }) => ({
+    part,
+    seconds,
+    props,
+    ...(chapter?.trim() ? { chapter } : {}),
+    ...(narration?.trim() ? { narration } : {}),
+    ...(source?.trim() ? { source } : {}),
+    ...(audio ? { audio } : {}),
+  })),
 });
 
 export const newScene = (part: PartDef): EditorScene => ({

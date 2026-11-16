@@ -70,8 +70,14 @@ export const draw = (frame: number, start: number, duration: number = T.draw, le
  * n 個の要素を順に出すときの i 番目の開始フレーム。
  * from から始めて、間隔は gap。ただし最後の要素が until までに出るよう間隔を詰める。
  * (シーンを短くしても、見どころの 70% 地点までに全部出そろうようにするため)
+ * cues(部品が受け取る cues をそのまま渡す)があれば、ナレーションに合わせてそのフレームで出す。
  */
-export const stagger = (i: number, n: number, from: number, until: number, gap: number = T.beat * 2): number => {
+export const stagger = (i: number, n: number, from: number, until: number, gap: number = T.beat * 2, cues?: readonly number[]): number => {
+  // ナレーションに合わせるとき: cues[i] のフレームで出す(cues が足りない項目は、最後の cue から gap ずつ)
+  if (cues && cues.length > 0) {
+    if (i < cues.length) return Math.max(0, cues[i]);
+    return cues[cues.length - 1] + (i - cues.length + 1) * gap;
+  }
   if (n <= 1) return from;
   const step = Math.min(gap, Math.max(0, until - from) / (n - 1));
   return from + i * step;

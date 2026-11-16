@@ -79,7 +79,7 @@ const Check = ({ frame, start }: { frame: number; start: number }) => {
   );
 };
 
-export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
+export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const n = props.items.length;
   const panelTop = layout.contentTop - 6;
   const panelBottom = layout.contentBottomFull + 4;
@@ -109,7 +109,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
       />
       <div style={{ position: 'absolute', left: layout.padX + PAD, top: panelTop + PAD, width: layout.contentWidth - PAD * 2 }}>
         {props.items.map((item, i) => {
-          const s = stagger(i, n, 16, settleBy(durationInFrames, 0.4), 20);
+          const s = stagger(i, n, 16, settleBy(durationInFrames, 0.4), 20, cues);
           const textIn = progress(frame, s + 8, T.enter);
           return (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 24, height: rowH }}>

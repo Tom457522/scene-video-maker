@@ -77,3 +77,16 @@ export const youtubeChapters = (chapters: Chapter[]): { text: string; warnings: 
   }
   return { text, warnings };
 };
+
+/** 10 秒に満たない章を、前の章(最初の章なら次の章)にまとめる(YouTube の章の条件を満たすため) */
+export const mergeShortChapters = (chapters: Chapter[], minFrames = 10 * VIDEO.fps): Chapter[] => {
+  const out: Chapter[] = [];
+  for (const c of chapters) {
+    const last = out[out.length - 1];
+    if (last && (c.durationInFrames < minFrames || last.durationInFrames < minFrames)) {
+      last.durationInFrames += c.durationInFrames;
+      last.scenes = [...last.scenes, ...c.scenes];
+    } else out.push({ ...c, scenes: [...c.scenes] });
+  }
+  return out;
+};
