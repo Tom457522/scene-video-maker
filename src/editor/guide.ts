@@ -34,7 +34,7 @@ export const sortByGroup = <T extends { id: string }>(parts: readonly T[]): T[] 
 export type Issue = {
   /** シーンの番号(0 から) */
   scene: number;
-  kind: 'short' | 'props' | 'unknown';
+  kind: 'short' | 'props' | 'unknown' | 'small';
   message: string;
   /** 「目安に合わせる」で入れる秒数 */
   fixSeconds?: number;

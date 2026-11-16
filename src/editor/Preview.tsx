@@ -1,4 +1,4 @@
-/** 中央: プレビュー(再生/停止、シークバー、シーンの区切り。繰り返し・縦長の切り替えは動画の右上) */
+/** 中央: プレビュー(再生/停止、シークバー、シーンの区切り。繰り返し・縦長・大きく見るの切り替えは動画の上。動画の中の章表示を隠さないよう、枠の外に置く) */
 import { Player, type PlayerRef } from '@remotion/player';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { VIDEO } from '../kit/theme';
@@ -16,9 +16,17 @@ export type PreviewHandle = {
   getFrame: () => number;
 };
 
-type Props = { project: Project; selected: number; onSelectScene: (i: number) => void; onShowKeys: () => void };
+type Props = {
+  project: Project;
+  selected: number;
+  onSelectScene: (i: number) => void;
+  onShowKeys: () => void;
+  /** プレビューを大きく見ているか */
+  wide: boolean;
+  onToggleWide: () => void;
+};
 
-export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, onSelectScene, onShowKeys }, ref) => {
+export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, onSelectScene, onShowKeys, wide, onToggleWide }, ref) => {
   const player = useRef<PlayerRef>(null);
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -81,6 +89,39 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
 
   return (
     <main className="col col-center">
+      <div className={vertical ? 'player-tools vertical' : 'player-tools'}>
+        <button
+          type="button"
+          className={loopScene ? 'on' : ''}
+          aria-pressed={loopScene}
+          title="選んでいるシーンだけを繰り返し再生(L)"
+          onClick={() => {
+            const next = !loopScene;
+            setLoopScene(next);
+            if (next && timeline[selected]) {
+              player.current?.seekTo(timeline[selected].from);
+              player.current?.play();
+            }
+          }}
+        >
+          <UiIcon name="repeat" size={14} />
+          繰り返し
+        </button>
+        <button
+          type="button"
+          className={vertical ? 'on' : ''}
+          aria-pressed={vertical}
+          title="縦長(9:16・ショート向け)で書き出したときの見え方に切り替える"
+          onClick={() => setVertical((v) => !v)}
+        >
+          <UiIcon name={vertical ? 'landscape' : 'phone'} size={14} />
+          {vertical ? '横長に戻す' : '縦長で見る'}
+        </button>
+        <button type="button" className={wide ? 'on' : ''} aria-pressed={wide} title="シーン一覧を隠して、プレビューを大きく表示する" onClick={onToggleWide}>
+          <UiIcon name={wide ? 'shrink' : 'expand'} size={14} />
+          {wide ? '元の大きさ' : '大きく見る'}
+        </button>
+      </div>
       <div className={vertical ? 'player-wrap vertical' : 'player-wrap'}>
         <Player
           ref={player}
@@ -99,35 +140,6 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
           inFrame={loopRange?.from ?? null}
           outFrame={loopRange?.to ?? null}
         />
-        <div className="player-tools">
-          <button
-            type="button"
-            className={loopScene ? 'on' : ''}
-            aria-pressed={loopScene}
-            title="選んでいるシーンだけを繰り返し再生(L)"
-            onClick={() => {
-              const next = !loopScene;
-              setLoopScene(next);
-              if (next && timeline[selected]) {
-                player.current?.seekTo(timeline[selected].from);
-                player.current?.play();
-              }
-            }}
-          >
-            <UiIcon name="repeat" size={14} />
-            繰り返し
-          </button>
-          <button
-            type="button"
-            className={vertical ? 'on' : ''}
-            aria-pressed={vertical}
-            title="縦長(9:16・ショート向け)で書き出したときの見え方に切り替える"
-            onClick={() => setVertical((v) => !v)}
-          >
-            <UiIcon name={vertical ? 'landscape' : 'phone'} size={14} />
-            {vertical ? '横長に戻す' : '縦長で見る'}
-          </button>
-        </div>
         {pick && (
           <div
             className="pick-overlay"

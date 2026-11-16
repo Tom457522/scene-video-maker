@@ -81,13 +81,15 @@ const Check = ({ frame, start }: { frame: number; start: number }) => {
 
 export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const n = props.items.length;
-  const panelTop = layout.contentTop - 6;
+  const areaTop = layout.contentTop - 6;
   const panelBottom = layout.contentBottomFull + 4;
-  const rowH = Math.min(100, (panelBottom - panelTop - PAD * 2) / n);
+  const rowH = Math.min(108, (panelBottom - areaTop - PAD * 2) / n);
   const textW = layout.contentWidth - PAD * 2 - ICON - 24;
-  const size = fitFontSizeToBox(props.items, { maxWidth: textW, maxHeight: rowH - 8, max: Math.min(font.size.body, Math.floor(rowH * 0.42)), min: 14 });
+  const size = fitFontSizeToBox(props.items, { maxWidth: textW, maxHeight: rowH - 8, max: Math.min(n <= 3 ? 44 : font.size.body, Math.floor(rowH * 0.42)), min: 14 });
   const panel = back(frame, 4, 20);
   const panelH = rowH * n + PAD * 2;
+  // 項目が少ないときは、枠を縦の中央寄りに置く(下側だけが空かないように)
+  const panelTop = areaTop + (panelBottom - areaTop - panelH) * 0.4;
 
   return (
     <Fill>

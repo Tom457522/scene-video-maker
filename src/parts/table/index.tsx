@@ -52,10 +52,11 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
     return Array.from({ length: cols }, (_, i) => (i === cols - 1 ? parts.slice(i).join(' ') : parts[i] ?? '').trim());
   });
   const n = cells.length;
-  const top = layout.contentTop;
   const bottom = props.caption.trim() === '' ? layout.contentBottomFull : layout.contentBottom;
   const headH = 56;
-  const rowH = Math.min(92, (bottom - top - headH) / n);
+  const rowH = Math.min(92, (bottom - layout.contentTop - headH) / n);
+  // 行が少ないときは、表を縦の中央寄りに置く(下側だけが空かないように)
+  const top = layout.contentTop + (bottom - layout.contentTop - headH - rowH * n) * 0.4;
   const colW = layout.contentWidth / cols;
   const textW = colW - PAD * 2;
   const headSize = fitFontSizeToBox(props.columns, { maxWidth: textW, maxHeight: headH - 10, max: 24, min: 13 });

@@ -141,7 +141,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
               transform: `scale(${0.6 + 0.4 * p})`,
             }}
           >
-            <div style={{ color: accent(i), fontSize: 18, fontWeight: font.weight.black, letterSpacing: '0.14em' }}>STEP {i + 1}</div>
+            <div style={{ color: accent(i), fontSize: 20, fontWeight: font.weight.black, letterSpacing: '0.12em' }}>STEP {i + 1}</div>
             <FitText text={step} maxWidth={textW} max={size} min={size} maxLines={6} style={{ textAlign: 'center' }} />
           </div>
         );

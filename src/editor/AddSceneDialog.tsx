@@ -25,7 +25,8 @@ const PartPreview = memo(({ part, playing }: { part: PartDef; playing: boolean }
   );
   const common = { component: ProjectVideo, inputProps, compositionWidth: VIDEO.width, compositionHeight: VIDEO.height, durationInFrames: frames, fps: VIDEO.fps, style: { width: '100%' } };
   return playing ? (
-    <Player {...common} autoPlay loop controls={false} acknowledgeRemotionLicense />
+    // 見本の絵(70% の時点)から動き始め、繰り返しで頭から再生する(最初の何もない場面で止まって見えないように)
+    <Player {...common} autoPlay loop controls={false} initialFrame={Math.floor(frames * 0.7)} acknowledgeRemotionLicense />
   ) : (
     <Thumbnail {...common} frameToDisplay={Math.floor(frames * 0.7)} />
   );

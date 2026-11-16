@@ -41,6 +41,8 @@ type Block = {
   heading: string;
   lines: string[];
   code?: { lang: string; text: string };
+  /** コードが lines の何行目の位置にあったか(ほかの書き方と分けるときに使う) */
+  codeAt?: number;
   narration: string[];
   source?: string;
   /** {part=...} で決めた部品 */
@@ -97,7 +99,9 @@ const toBlocks = (text: string): Block[] => {
     if (fence) {
       if (f && f[1] === '') {
         if (blocks.length === 0) blocks.push(newBlock(2, ''));
-        blocks[blocks.length - 1].code = { lang: fence.lang, text: fence.lines.join('\n') };
+        const target = blocks[blocks.length - 1];
+        target.code = { lang: fence.lang, text: fence.lines.join('\n') };
+        target.codeAt = target.lines.length;
         fence = null;
       } else fence.lines.push(raw);
       continue;
@@ -208,8 +212,11 @@ const blockToScenes = (b: Block): OutlineScene[] => {
   const numbered: string[] = [];
   const bars: { label: string; value: number; unit: string }[] = [];
   const plain: string[] = [];
+  /** 字幕以外の行を書いた順に(箇条書きにするとき、グラフの行なども落とさないため) */
+  const ordered: string[] = [];
   for (const line of b.lines) {
     let m: RegExpExecArray | null;
+    if (!RE.caption.test(line)) ordered.push((RE.bullet.exec(line)?.[1] ?? RE.numbered.exec(line)?.[1] ?? line).trim());
     if ((m = RE.caption.exec(line))) captions.push(m[1].trim());
     else if ((m = RE.bar.exec(line)) && !RE.numbered.test(line)) {
       bars.push({ label: m[1].trim(), value: Number(m[2].replace(/,/g, '')), unit: m[3] ?? '' });
@@ -272,7 +279,7 @@ const blockToScenes = (b: Block): OutlineScene[] => {
     return chunk(toCards(bullets), 6).map((cards, i) => ({ part: 'icons', props: { heading: i === 0 ? heading : `${heading}(続き)`, cards, caption } }));
   }
 
-  const items = [...bullets, ...numbered, ...plain];
+  const items = ordered.filter(Boolean);
   if (items.length === 0) return heading ? [{ part: 'title', props: { kicker: '', title: heading, subtitle: caption } }] : [];
   const isSummary = SUMMARY_HEADING.test(heading);
   return chunk(items, isSummary ? 5 : 6).map((it, i) => ({
@@ -378,8 +385,82 @@ const forcePart = (b: Block, auto: OutlineScene[]): OutlineScene[] => {
   ];
 };
 
+/** 行の書き方の種類。種類が違う行は 1 つのシーンにまとめられない(字幕は前後のどちらにも付く) */
+const lineKind = (line: string, ctx: { qa: boolean; quote: boolean }): string => {
+  if (RE.caption.test(line)) return 'caption';
+  if (RE.number.test(line)) return 'number';
+  // 「A: 1,200件」のような行もあるため、Q と A がそろうときだけ Q&A とみなす(出典の行も引用があるときだけ)
+  if (ctx.qa && (RE.q.test(line) || RE.a.test(line))) return 'qa';
+  if (RE.quote.test(line) || (ctx.quote && RE.source.test(line))) return 'quote';
+  if (RE.image.test(line)) return 'image';
+  if (RE.table.test(line)) return 'table';
+  return 'list';
+};
+
+/**
+ * 1 つの見出しの下に種類の違う書き方(数字と Q&A、箇条書きと表など)があるとき、
+ * 書いた順にブロックを分ける。分けないと最後の 1 種類しか残らず、ほかの行が黙って消えるため。
+ */
+const splitBlock = (b: Block): Block[] => {
+  if (b.level !== 2 || b.force) return [b];
+  type Seg = { kind: string; lines: string[]; code?: Block['code'] };
+  const segs: Seg[] = [];
+  const pending: string[] = [];
+  const push = (kind: string, line?: string, code?: Block['code']) => {
+    const last = segs[segs.length - 1];
+    if (last && last.kind === kind && !code && !last.code) {
+      if (line !== undefined) last.lines.push(line);
+      return;
+    }
+    // 先頭の字幕は、最初のまとまりに付ける
+    segs.push({ kind, lines: [...pending.splice(0), ...(line !== undefined ? [line] : [])], ...(code ? { code } : {}) });
+  };
+  const ctx = { qa: b.lines.some((l) => RE.q.test(l)) && b.lines.some((l) => RE.a.test(l)), quote: b.lines.some((l) => RE.quote.test(l)) };
+  b.lines.forEach((line, i) => {
+    if (b.code && b.codeAt === i) push('code', undefined, b.code);
+    const kind = lineKind(line, ctx);
+    if (kind === 'caption') {
+      if (segs.length > 0) segs[segs.length - 1].lines.push(line);
+      else pending.push(line);
+    } else push(kind, line);
+  });
+  if (b.code && (b.codeAt ?? b.lines.length) >= b.lines.length) push('code', undefined, b.code);
+  if (pending.length > 0) {
+    if (segs.length === 0) return [b];
+    segs[0].lines.unshift(...pending);
+  }
+  if (segs.length <= 1) return [b];
+  return segs.map((seg, i) => {
+    const { code: _code, codeAt: _at, ...rest } = b;
+    return {
+      ...rest,
+      lines: seg.lines,
+      ...(seg.code ? { code: seg.code } : {}),
+      // ナレーションは最初のまとまりにだけ付ける
+      narration: i === 0 ? b.narration : [],
+    };
+  });
+};
+
 /** ブロックをシーンにし、部品の指定・ナレーション・出典を付ける */
 const blockWithExtras = (b: Block): OutlineScene[] => {
+  const parts = splitBlock(b);
+  if (parts.length > 1) {
+    const scenes = parts.flatMap(blockScenes);
+    if (scenes.length > 0) {
+      (scenes[0].notes ??= []).push(
+        `「${b.heading || '(見出しなし)'}」の中に種類の違う書き方があったため、${scenes.length} シーンに分けました(1 シーン 1 種類にするなら、見出しを分けてください)`,
+      );
+      if (b.narration.length > 0) {
+        (scenes[0].notes ??= []).push(`ナレーションは最初のシーンだけに付きました(ほかのシーンにはエディタで書き足してください)`);
+      }
+    }
+    return scenes;
+  }
+  return blockScenes(b);
+};
+
+const blockScenes = (b: Block): OutlineScene[] => {
   const scenes = b.force ? forcePart(b, blockToScenes(b)) : blockToScenes(b);
   if (scenes.length === 0) return scenes;
   const narration = b.narration.join('');

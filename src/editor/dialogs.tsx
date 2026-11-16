@@ -2,7 +2,7 @@
  * ブラウザ標準の confirm / prompt / alert の代わり。ボタンに「何が起きるか」を書けるようにする。
  * どこからでも askConfirm / askText / showAlert を呼べ、画面には <DialogHost /> が出す。
  */
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Modal } from './Modal';
 
 type Request =
@@ -35,6 +35,14 @@ export const showAlert = (title: string, message: string) => new Promise<void>((
 
 const TextForm = ({ req }: { req: Extract<Request, { kind: 'text' }> }) => {
   const [value, setValue] = useState(req.initial);
+  const input = useRef<HTMLInputElement>(null);
+  // 最初の文字(「新しい動画」など)は選んだ状態にして、そのまま打てば置き換わるようにする
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.focus();
+    el.select();
+  }, []);
   const error = req.validate?.(value.trim()) ?? '';
   const done = (v: string | null) => {
     pop();
@@ -51,7 +59,7 @@ const TextForm = ({ req }: { req: Extract<Request, { kind: 'text' }> }) => {
       >
         <label className="field">
           <div className="label">{req.message}</div>
-          <input type="text" autoFocus value={value} maxLength={60} onChange={(e) => setValue(e.target.value)} />
+          <input ref={input} type="text" autoFocus value={value} maxLength={60} onChange={(e) => setValue(e.target.value)} />
           {error && <div className="hint warn">{error}</div>}
         </label>
         <div className="modal-actions">

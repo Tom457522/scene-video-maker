@@ -40,8 +40,8 @@ const BADGE = 76;
 
 export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
   const textW = layout.contentWidth - BADGE - 24 - 64;
-  const qSize = fitFontSize(props.question, { maxWidth: textW, max: 40, min: 24, maxLines: 3 });
-  const aSize = fitFontSize(props.answer, { maxWidth: textW, max: 34, min: 20, maxLines: 5 });
+  const qSize = fitFontSize(props.question, { maxWidth: textW, max: 46, min: 24, maxLines: 3 });
+  const aSize = fitFontSize(props.answer, { maxWidth: textW, max: 38, min: 20, maxLines: 5 });
   const aStart = Math.min(settleBy(durationInFrames, 0.4), 40);
   const cards = [
     { badge: 'Q', text: props.question, size: qSize, color: colors.coral, start: 4 },

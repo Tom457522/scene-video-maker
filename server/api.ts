@@ -16,6 +16,9 @@
  *   GET  /api/assets[?usage]      画像の一覧(usage を付けると、使っているプロジェクトも返す)
  *   DELETE /api/assets/:name      画像の削除(projects/.trash/ へ移す)
  *   POST /api/assets              画像を保存 { name, data(base64) } → { name }
+ *   GET  /api/bgm                 選べる BGM の一覧 → { bgm: [{ file, label, generated }] }
+ *   POST /api/bgm                 自動で作る曲を用意する { mood } → { file }
+ *   POST /api/bgm/upload          手持ちの曲を保存 { name, data(base64) } → { file }
  *   POST /api/archive             プロジェクトと使っている画像を zip にまとめる { name, project } → zip
  *   POST /api/archive/import      zip から読み込む { name, data(base64) } → { name, renamed }
  *   POST /api/still               1 シーンを PNG で書き出す { name, project, scene } → { file }
@@ -30,6 +33,7 @@ import { OUT_DIR, deleteProject, isValidName, listHistory, listProjects, readHis
 import { EXPORT_FORMATS, QUALITIES, type ExportFormat, type Quality } from '../src/remotion/composition-id.ts';
 import { JobCancelled, createQueue } from './jobs.ts';
 import { exportArchive, importArchive } from './archive.ts';
+import { MAX_BGM_BYTES, ensureMoodBgm, listBgm, saveBgm } from './bgm.ts';
 import { MAX_ASSET_BYTES, assetUsage, deleteAsset, isValidAssetName, listAssets, saveAsset } from './assets.ts';
 
 const MAX_BODY = 5 * 1024 * 1024;
@@ -235,6 +239,24 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
       } catch (e) {
         return send(res, 400, { error: errorMessage(e) });
       }
+    }
+  }
+
+  if (parts[0] === 'bgm') {
+    try {
+      if (parts.length === 1 && method === 'GET') return send(res, 200, { bgm: await listBgm() });
+      if (parts.length === 1 && method === 'POST') {
+        const body = (await readJson(req)) as { mood?: unknown };
+        if (typeof body.mood !== 'string') return send(res, 400, { error: 'mood が必要です' });
+        return send(res, 200, { file: await ensureMoodBgm(body.mood) });
+      }
+      if (parts.length === 2 && parts[1] === 'upload' && method === 'POST') {
+        const body = (await readJson(req, Math.ceil(MAX_BGM_BYTES * 1.4) + 1024)) as { name?: unknown; data?: unknown };
+        if (typeof body.name !== 'string' || typeof body.data !== 'string') return send(res, 400, { error: 'name と data(base64)が必要です' });
+        return send(res, 200, { file: await saveBgm(body.name, Buffer.from(body.data, 'base64')) });
+      }
+    } catch (e) {
+      return send(res, 400, { error: errorMessage(e) });
     }
   }
 

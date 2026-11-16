@@ -59,6 +59,8 @@ const paths = {
   phone: <rect x="7" y="2" width="10" height="20" rx="2" />,
   landscape: <rect x="2" y="6" width="20" height="12" rx="2" />,
   close: <path d="M6 6l12 12M18 6 6 18" />,
+  expand: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+  shrink: <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />,
   help: (
     <>
       <circle cx="12" cy="12" r="9" />
