@@ -8,12 +8,31 @@ import { field } from '../kit/fields.ts';
 export const MIN_SECONDS = 1;
 export const MAX_SECONDS = 60;
 
+/** シーンのナレーション音声。file は projects/assets/ からの相対パス */
+export const sceneAudioSchema = z.object({
+  file: z.string().max(200),
+  /** 話し始める時刻(秒) */
+  start: z.number().min(0).max(MAX_SECONDS),
+  /** 音声の長さ(秒) */
+  duration: z.number().min(0).max(MAX_SECONDS),
+  /** 画面の項目を出す時刻(秒)。▶ の位置で決まる */
+  cues: z.array(z.number().min(0).max(MAX_SECONDS)).max(20).default([]),
+  /** 字幕の区切り(読み上げた文と、その開始・終了の秒) */
+  lines: z.array(z.object({ text: z.string().max(200), start: z.number(), end: z.number() })).max(60).default([]),
+});
+
 export const sceneSchema = z.object({
   part: z.string().min(1),
   seconds: z.number().min(MIN_SECONDS).max(MAX_SECONDS),
   props: z.record(z.string(), z.unknown()).default({}),
   /** このシーンから新しい章にするときの章の名前(省略すると見出しから自動で決める) */
   chapter: z.string().max(40).optional(),
+  /** 読み上げる文(▶ の位置で、画面の項目を 1 つずつ出す)。npm run make が音声にする */
+  narration: z.string().max(800).optional(),
+  /** 画面の下に小さく出す出典 */
+  source: z.string().max(120).optional(),
+  /** ナレーションの音声(npm run make が作る)。秒数はすべてシーンの先頭から */
+  audio: sceneAudioSchema.optional(),
 });
 
 /** 動画全体の設定(テーマ・章の表示・チャンネル名とロゴ・エンドカード) */
@@ -37,6 +56,10 @@ export const settingsSchema = z.object({
       options: { slide: '左へ流れる', fade: 'フェード', wipe: 'ワイプ', zoom: 'ズーム', none: '動きなし' },
       description: '各シーンの終わりの消え方(速さは自動で決まる)',
     }),
+  subtitles: field.toggle('ナレーションの字幕', true, { description: 'ナレーションの音声があるシーンで、話している文を下に出す' }),
+  bgm: z.string().max(200).default('').meta({ title: 'BGM', description: 'projects/assets/ の音声ファイル(npm run make の --bgm で作る)' }),
+  bgmVolume: field.number('BGM の音量', 0.1, { min: 0, max: 1, step: 0.05, description: '0〜1。ナレーションの間は自動で下がる' }),
+  sfx: field.toggle('効果音', true, { description: 'ナレーションに合わせて項目が出るときに小さな音を鳴らす' }),
 });
 
 export const projectSchema = z.object({
@@ -45,6 +68,7 @@ export const projectSchema = z.object({
   scenes: z.array(sceneSchema).max(200).default([]),
 });
 
+export type SceneAudio = z.output<typeof sceneAudioSchema>;
 export type Scene = z.output<typeof sceneSchema>;
 export type Project = z.output<typeof projectSchema>;
 export type Settings = z.output<typeof settingsSchema>;

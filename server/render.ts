@@ -13,6 +13,10 @@ import { COMPOSITION_ID, EXPORT_FORMATS, QUALITIES, type ExportFormat, type Qual
 import { sceneTimeline, type Project } from '../src/video/project.ts';
 import { LAYOUT_LOG_PREFIX, type LayoutIssue } from '../src/video/layout-check.ts';
 import { ROOT } from './projects.ts';
+import { hasSound } from '../src/video/sound-files.ts';
+import { cueFrames } from '../src/video/narration.ts';
+import { T } from '../src/kit/motion.ts';
+import { VIDEO } from '../src/kit/theme.ts';
 import { ASSETS_DIR } from './assets.ts';
 
 const ENTRY = path.join(ROOT, 'src', 'remotion', 'index.ts');
@@ -128,7 +132,8 @@ export const renderVideo = async (
     serveUrl,
     inputProps,
     codec: format.codec,
-    muted: true,
+    // ナレーション・BGM があるときだけ音を入れる(GIF は音なし)
+    muted: gif || !hasSound(project),
     // 1080p は 720p の画面を 1.5 倍の解像度で撮る(文字や図形はベクターなのでぼやけない)
     scale: format.scale,
     // GIF は画質の指定がなく、2 フレームに 1 枚(15fps)にしてファイルを小さくし、くり返し再生する
@@ -143,6 +148,17 @@ export const renderVideo = async (
   });
   onProgress('done', 1);
   return outputLocation;
+};
+
+/**
+ * 見どころのフレーム(シーンの頭から)。ふつうは ratio の時点。
+ * ナレーションに合わせて項目を出すシーンは、最後の項目が出そろった後にする(はみ出しの検査で全部の項目を見るため)。
+ */
+export const stillFrame = (scene: Project['scenes'][number], durationInFrames: number, ratio = 0.7): number => {
+  const base = Math.floor(durationInFrames * ratio);
+  const cues = cueFrames(scene, VIDEO.fps);
+  const settled = cues ? cues[cues.length - 1] + T.enter + 8 : 0;
+  return Math.min(durationInFrames - 1, Math.max(base, Math.min(settled, durationInFrames - T.exit - 2)));
 };
 
 export type SceneStill = {
@@ -167,7 +183,7 @@ export const renderSceneStills = async (
   const results: SceneStill[] = [];
   for (const [i, scene] of project.scenes.entries()) {
     const { from, durationInFrames } = timeline[i];
-    const frame = from + Math.min(durationInFrames - 1, Math.floor(durationInFrames * ratio));
+    const frame = from + stillFrame(scene, durationInFrames, ratio);
     const file = path.join(outDir, `${String(i + 1).padStart(2, '0')}-${scene.part}.png`);
     let issues: LayoutIssue[] = [];
     await renderStill({
@@ -197,7 +213,7 @@ export const renderOneStill = async (project: Project, sceneIndex: number, outpu
   if (!t) throw new Error(`シーン ${sceneIndex + 1} がありません`);
   const { serveUrl, inputProps, composition } = await prepare(project, () => undefined);
   await fs.mkdir(path.dirname(output), { recursive: true });
-  const frame = t.from + Math.min(t.durationInFrames - 1, Math.floor(t.durationInFrames * ratio));
+  const frame = t.from + stillFrame(project.scenes[sceneIndex], t.durationInFrames, ratio);
   await renderStill({ composition, serveUrl, inputProps, frame, output, browserExecutable, logLevel });
   return output;
 };

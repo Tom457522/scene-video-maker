@@ -162,6 +162,41 @@ export const SceneSettings = ({ scene, index, onChange, onChangePart, onExportSt
             />
             <div className="hint">章の名前を書くと、このシーンから新しい章になります(章の表示・YouTube の章・縦長の動画に使う)。</div>
           </div>
+          <div className="field">
+            <div className="label">ナレーション</div>
+            <textarea
+              rows={4}
+              maxLength={800}
+              value={scene.narration ?? ''}
+              placeholder="読み上げる文。▶ を入れた所で画面の項目を 1 つずつ出す"
+              aria-label="ナレーション"
+              onChange={(e) => {
+                // 文を変えたら、前の音声は合わなくなるので外す(npm run make で作り直す)
+                const { narration: _old, audio: _audio, ...rest } = scene;
+                onChange(e.target.value === '' ? rest : { ...rest, narration: e.target.value }, 'narration');
+              }}
+            />
+            <div className="hint">
+              {scene.audio
+                ? `音声あり(${scene.audio.duration.toFixed(1)} 秒)。文を変えると音声は外れます。`
+                : '音声は npm run make で作ります(VOICEVOX か Open JTalk。どちらも無料)。'}
+              {'{表記|よみ}'} で読み方を指定できます。
+            </div>
+          </div>
+          <div className="field">
+            <div className="label">出典</div>
+            <input
+              type="text"
+              maxLength={120}
+              value={scene.source ?? ''}
+              placeholder="画面の右下に小さく出す(空欄なら出さない)"
+              aria-label="出典"
+              onChange={(e) => {
+                const { source: _old, ...rest } = scene;
+                onChange(e.target.value === '' ? rest : { ...scene, source: e.target.value }, 'source');
+              }}
+            />
+          </div>
           {!small && <ReadabilityHint smallest={smallest} />}
           <button type="button" className="still-btn" onClick={onExportStill} disabled={stillBusy} title="このシーンの見どころ(70% の時点)を PNG で書き出す">
             <UiIcon name="image" size={16} />

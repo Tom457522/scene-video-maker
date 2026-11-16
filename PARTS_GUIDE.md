@@ -82,7 +82,7 @@ AI に頼むときは、このファイルと `src/kit/`・`src/parts/bullets/in
 | `bump(frame, at, duration = 10)` | 0 → 1 → 0 | 着地や完了の瞬間に一瞬ふくらませる |
 | `draw(frame, start, duration)` | `{ strokeDasharray, strokeDashoffset, progress }` | SVG の線を描く。要素に `pathLength={1}` を付けて値をそのまま渡す |
 | `mix(p, from, to)` | from → to | 0〜1 の進み具合を px や角度に変える |
-| `stagger(i, n, from, until, gap)` | i 番目の開始フレーム | 複数要素を順に出す。until までに収まるよう間隔を詰める |
+| `stagger(i, n, from, until, gap, cues)` | i 番目の開始フレーム | 複数要素を順に出す。until までに収まるよう間隔を詰める。`cues`(Component が受け取る)を渡すと、ナレーションの ▶ の時刻に合わせて出す |
 | `settleBy(durationInFrames, ratio = 0.55)` | フレーム | 「ここまでに登場を終える」目安 |
 | `drift(frame, period, phase)` | -1 〜 1 | ゆっくり漂う |
 | `pingPong(frame, period)` | 0 → 1 → 0 の繰り返し | 往復する粒 |
@@ -158,7 +158,7 @@ export const schema = z.object({
 コンポーネントで押さえている点:
 
 1. **配置を数から計算する。** 項目数 `n` から 1 行の高さ `rowHeight` を決め、`fitFontSizeToBox` で全項目が「幅」と「行の高さ」の両方に収まる共通の文字サイズを出す。項目が増えても、文が長くても画面に収まる(`npm run stress -- bullets` で上限いっぱいの入力を試せる)。
-2. **タイミングをシーンの長さから決める。** `stagger(i, n, from, settleBy(durationInFrames, 0.5), 14)` で i 番目の開始フレームを出す。秒数を短くすると間隔が自動で詰まり、70% 地点では全項目が出そろう。
+2. **タイミングをシーンの長さから決める。** `stagger(i, n, from, settleBy(durationInFrames, 0.5), 14, cues)` で i 番目の開始フレームを出す。秒数を短くすると間隔が自動で詰まり、70% 地点では全項目が出そろう。ナレーションの音声があるシーンでは Component の引数 `cues` に「i 番目の項目を出すフレーム」が入るので、そのまま渡せば話に合わせて項目が出る(項目を順に出す部品は必ず渡す。`src/video/narration.ts` の `cueItems` にもその部品の項目の取り出し方を足す)。
 3. **動きは kit の関数だけで書く。**
    - 番号バッジ: `const badge = back(frame, s, T.enter)` → `rotate(mix(badge, -200, 0))` と `scale(badge)` で回転しながらポンと出る。数字の色は `colors.onAccent`(どのテーマでもバッジの上で読める)。
    - 文: `const textIn = progress(frame, s + 4, T.enter)` → `translateX(mix(textIn, 80, 0))` で右から入る。

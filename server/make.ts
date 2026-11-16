@@ -15,7 +15,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { outlineToScenes } from '../src/editor/fromOutline.ts';
-import type { PartDef } from '../src/parts/registry.ts';
+import { z } from 'zod';
+import { resolveProps, type PartDef } from '../src/parts/registry.ts';
+import { buildChapters, mergeShortChapters, youtubeChapters } from '../src/video/chapters.ts';
 import { projectSchema, totalFrames, type Project } from '../src/video/project.ts';
 import { VIDEO, themes } from '../src/kit/theme.ts';
 import { ASSETS_DIR, isValidAssetName, sanitizeAssetName } from './assets.ts';
@@ -40,7 +42,7 @@ export const outlineToProject = (
   const project = projectSchema.parse({
     title: title || '無題',
     settings,
-    scenes: scenes.map(({ scene }) => ({ part: scene.part, seconds: scene.seconds, props: scene.props })),
+    scenes: scenes.map(({ scene: { key: _key, ...scene } }) => scene),
   });
   return { project, notes };
 };
@@ -185,3 +187,35 @@ export const readMakeInput = async (
 export const totalSeconds = (project: Project): number => totalFrames(project) / VIDEO.fps;
 
 export const isTheme = (id: string): boolean => id in themes;
+
+/** i 番目のシーンの入力値(既定値で補ったもの)を返す関数 */
+export const resolverFor = (project: Project, parts: readonly PartDef[]) => {
+  const byId = new Map(parts.map((p) => [p.id, p]));
+  return (i: number): Record<string, unknown> => {
+    const s = project.scenes[i];
+    const part = byId.get(s.part);
+    return part ? resolveProps(part, s.props).props : s.props;
+  };
+};
+
+/** 動画の説明(YouTube の概要欄)に貼る文。章の時刻・出典・音声のクレジット */
+export const buildDescription = (project: Project, resolve: (i: number) => Record<string, unknown>, credit: string): string => {
+  const out: string[] = [project.title, ''];
+  const chapters = youtubeChapters(mergeShortChapters(buildChapters(project, resolve)));
+  if (chapters.warnings.length === 0) out.push('■ 目次', chapters.text, '');
+  const sources = [...new Set(project.scenes.map((s) => s.source?.trim()).filter((x): x is string => !!x))];
+  if (sources.length > 0) out.push('■ 出典', ...sources.map((s) => `・${s}`), '');
+  const credits = [credit, project.settings.bgm.startsWith('audio/bgm-') ? 'BGM: 自動生成' : ''].filter(Boolean);
+  if (credits.length > 0) out.push('■ クレジット', ...credits, '');
+  return `${out.join('\n').trim()}\n`;
+};
+
+/** 部品ごとの入力の上限(AI が台本を上限内で書くための資料。npm run make -- --spec) */
+export const partSpec = (parts: readonly PartDef[]) =>
+  parts.map((p) => ({
+    id: p.id,
+    name: p.meta.name,
+    description: p.meta.description,
+    defaultSeconds: p.meta.defaultSeconds,
+    props: z.toJSONSchema(p.schema, { io: 'input', unrepresentable: 'any' }),
+  }));

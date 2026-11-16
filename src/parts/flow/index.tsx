@@ -48,7 +48,7 @@ export const schema = z.object({
 const ARROW_GAP = 100;
 const BOX_HEIGHT = 168;
 
-export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
+export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const n = props.steps.length;
   const boxW = Math.min(260, (layout.contentWidth - (n - 1) * ARROW_GAP) / n);
   const totalW = n * boxW + (n - 1) * ARROW_GAP;
@@ -59,7 +59,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
   // STEP の札(約 34px)を除いた高さに収める
   const size = fitFontSizeToBox(props.steps, { maxWidth: textW, maxHeight: BOX_HEIGHT - 62, max: 34, min: 13 });
 
-  const starts = props.steps.map((_, i) => stagger(i, n, 12, settleBy(durationInFrames, 0.5), 22));
+  const starts = props.steps.map((_, i) => stagger(i, n, 12, settleBy(durationInFrames, 0.5), 22, cues));
   const xOf = (i: number) => left0 + i * (boxW + ARROW_GAP);
 
   return (

@@ -45,7 +45,7 @@ export const schema = z.object({
 
 const PAD = 18;
 
-export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
+export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const cols = props.columns.length;
   const cells = props.rows.map((r) => {
     const parts = r.split(/\s*[|｜]\s*/);
@@ -60,7 +60,8 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
   const textW = colW - PAD * 2;
   const headSize = fitFontSizeToBox(props.columns, { maxWidth: textW, maxHeight: headH - 10, max: 24, min: 13 });
   const size = fitFontSizeToBox(cells.flat(), { maxWidth: textW, maxHeight: rowH - 10, max: 28, min: 10 });
-  const until = settleBy(durationInFrames, 0.5);
+  // ナレーションに合わせるときは、最後の項目が出たところを「出そろった」時点にする
+  const until = Math.max(settleBy(durationInFrames, 0.5), cues?.length ? stagger(n - 1, n, 0, 0, 10, cues) : 0);
   const markAt = until + 8;
   const head = progress(frame, 6, T.enter);
 
@@ -76,7 +77,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
           ))}
         </div>
         {cells.map((row, r) => {
-          const s = stagger(r, n, 14, until, 10);
+          const s = stagger(r, n, 14, until, 10, cues);
           const p = progress(frame, s, T.enter);
           const marked = props.highlight === r + 1;
           const m = marked ? progress(frame, markAt, 12) : 0;

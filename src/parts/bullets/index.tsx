@@ -46,7 +46,7 @@ const BADGE = 60;
 const BADGE_GAP = 28;
 
 // 3. Component: props と frame だけから見た目を決める
-export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
+export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const n = props.items.length;
   const top = layout.contentTop;
   const bottom = layout.contentBottomFull;
@@ -70,7 +70,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
       <Heading text={props.heading} frame={frame} />
       <div style={{ position: 'absolute', left: layout.padX, top, width: layout.contentWidth }}>
         {props.items.map((item, i) => {
-          const s = stagger(i, n, from, until, 14);
+          const s = stagger(i, n, from, until, 14, cues);
           const badge = back(frame, s, T.enter);
           const textIn = progress(frame, s + 4, T.enter);
           return (

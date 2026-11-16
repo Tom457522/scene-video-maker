@@ -51,7 +51,7 @@ export const schema = z.object({
   caption: field.text('字幕', '', { max: 60, marks: true, description: '画面下に出す補足。空欄なら出しません' }),
 });
 
-export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
+export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const n = props.events.length;
   const lineY = props.caption.trim() === '' ? 390 : 370;
   const x0 = layout.padX + 30;
@@ -66,7 +66,8 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
     props.events.map((e) => e.when),
     { maxWidth: colW, max: 34, min: 20, maxLines: 1 },
   );
-  const until = settleBy(durationInFrames, 0.5);
+  // ナレーションに合わせるときは、最後の項目が出たところを「出そろった」時点にする
+  const until = Math.max(settleBy(durationInFrames, 0.5), cues?.length ? stagger(n - 1, n, 0, 0, 10, cues) : 0);
   const line = draw(frame, 8, Math.max(12, until - 8));
 
   return (
@@ -88,7 +89,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
       </svg>
       {props.events.map((e, i) => {
         const cx = x0 + step * (i + 0.5);
-        const s = stagger(i, n, 14, until, 12);
+        const s = stagger(i, n, 14, until, 12, cues);
         const dot = back(frame, s, 14);
         const label = progress(frame, s + 4, T.enter);
         return (

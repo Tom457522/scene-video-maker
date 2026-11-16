@@ -123,3 +123,49 @@ test('3 列以上の表は表の部品にする', () => {
   assert.deepEqual(r.scenes[0].props.columns, ['名前', '年', '特徴']);
   assert.deepEqual(r.scenes[0].props.rows, ['A | 2009 | 最初', 'B | 2015 | 速い']);
 });
+
+test('ナレーションと出典の行は、部品の書き方とは別に取り分ける', () => {
+  const r = parseOutline(`## 利用者\nA社: 40%\nB社: 25%\nナレーション: 2023年に A 社が 40% を占めました。\nナレーション: ▶続いて B 社です。\n出典: 調査会社 2024`);
+  assert.equal(r.scenes.length, 1);
+  assert.equal(r.scenes[0].part, 'bars');
+  assert.equal((r.scenes[0].props.rows as unknown[]).length, 2);
+  assert.equal(r.scenes[0].narration, '2023年に A 社が 40% を占めました。▶続いて B 社です。');
+  assert.equal(r.scenes[0].source, '調査会社 2024');
+});
+
+test('{part=...} で部品を直接決める(アイコンは文から選ぶ)', () => {
+  const r = parseOutline(`## 3 つの利点 {part=icons}\n- 安全: 暗号で守る\n- 速い: すぐ届く\n- 安い: 手数料が少ないコスト`);
+  assert.equal(r.scenes[0].part, 'icons');
+  assert.equal(r.scenes[0].props.heading, '3 つの利点');
+  const cards = r.scenes[0].props.cards as { icon: string; title: string; text: string }[];
+  assert.deepEqual(cards.map((c) => c.title), ['安全', '速い', '安い']);
+  assert.equal(cards[0].icon, 'shield');
+  assert.equal(new Set(cards.map((c) => c.icon)).size, 3);
+});
+
+test('「- [アイコン] 名前: 説明」はアイコン一覧になる', () => {
+  const r = parseOutline(`## 特徴\n- [lock] 鍵: 暗号で守る\n- [globe] 世界: どこでも使える`);
+  assert.equal(r.scenes[0].part, 'icons');
+  assert.deepEqual((r.scenes[0].props.cards as { icon: string }[]).map((c) => c.icon), ['lock', 'globe']);
+});
+
+test('{part=compare} は「名前: 項目」の 2 つの名前で左右に分ける', () => {
+  const r = parseOutline(`## 違い {part=compare}\n- 従来: 人が確認\n- 新方式: 自動で確認\n- 従来: 数日かかる\n- 新方式: 数分で終わる`);
+  assert.equal(r.scenes[0].part, 'compare');
+  assert.deepEqual(r.scenes[0].props.leftItems, ['人が確認', '数日かかる']);
+  assert.deepEqual(r.scenes[0].props.rightItems, ['自動で確認', '数分で終わる']);
+});
+
+test('合う書き方がない {part=...} は見出しだけ引き継いで知らせる', () => {
+  const r = parseOutline(`## 謎 {part=quote}\n- 何か`);
+  assert.equal(r.scenes[0].part, 'quote');
+  assert.equal(r.scenes[0].notes?.length, 1);
+});
+
+test('分かれたシーンのナレーションは最初のシーンだけに付けて知らせる', () => {
+  const r = parseOutline(`## 多い\n${Array.from({ length: 8 }, (_, i) => `- 項目${i + 1}`).join('\n')}\nナレーション: 説明です。`);
+  assert.equal(r.scenes.length, 2);
+  assert.equal(r.scenes[0].narration, '説明です。');
+  assert.equal(r.scenes[1].narration, undefined);
+  assert.equal(r.scenes[0].notes?.length, 1);
+});

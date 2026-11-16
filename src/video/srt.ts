@@ -1,6 +1,6 @@
 /**
- * 字幕ファイル(SRT)。各シーンの「字幕」(caption)に自分で書いた文を、そのシーンの表示時間で並べる。
- * 文を自動で作ることはしない(書いてある文をそのまま使う)。
+ * 字幕ファイル(SRT)。ナレーションの音声があるシーンは話している文を、
+ * ないシーンは「字幕」(caption)に自分で書いた文を、そのシーンの表示時間で並べる。
  */
 import { T } from '../kit/motion';
 import { stripMarks } from '../kit/text';
@@ -23,7 +23,16 @@ export const srtTime = (frames: number): string => {
 export const buildCues = (project: Pick<Project, 'scenes'>, resolve: (i: number) => Record<string, unknown> = (i) => project.scenes[i].props): Cue[] => {
   const timeline = sceneTimeline(project);
   const cues: Cue[] = [];
-  project.scenes.forEach((_, i) => {
+  project.scenes.forEach((scene, i) => {
+    // ナレーションの音声があるシーンは、話している文をその時刻で並べる
+    const a = scene.audio;
+    if (a && a.lines.length > 0) {
+      const from = timeline[i].from;
+      for (const l of a.lines) {
+        cues.push({ start: from + Math.round((a.start + l.start) * VIDEO.fps), end: from + Math.round((a.start + l.end) * VIDEO.fps), text: l.text });
+      }
+      return;
+    }
     const caption = resolve(i).caption;
     if (typeof caption !== 'string' || caption.trim() === '') return;
     const { from, durationInFrames } = timeline[i];

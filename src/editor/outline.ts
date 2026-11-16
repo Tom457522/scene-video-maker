@@ -19,18 +19,41 @@
  *   >> 文 と -- 出典         → quote
  *   !! 約100万件 説明        → number(数字の前は前置き、直後は単位、空白の後は説明)
  *   [[語]]                   → そのまま強調になる
+ *   ナレーション: 文          → 読み上げる文(▶ の位置で画面の項目を 1 つずつ出す)。何行でも書ける
+ *   出典: 文                 → 画面の下に小さく出す出典
+ *   ## 見出し {part=icons}   → 部品を直接決める(書き方からの推測より優先)
+ *   - [shield] 名前: 説明    → icons(アイコン一覧。{part=icons} ならアイコンは文から選ぶ)
  */
 
-export type OutlineScene = { part: string; props: Record<string, unknown> };
+import { guessIcon, isIconName } from './icon-guess';
 
-type Block = { level: 1 | 2; heading: string; lines: string[]; code?: { lang: string; text: string } };
+export type OutlineScene = {
+  part: string;
+  props: Record<string, unknown>;
+  narration?: string;
+  source?: string;
+  /** 変換で気をつけてほしいこと(シーンの notes に足す) */
+  notes?: string[];
+};
+
+type Block = {
+  level: 1 | 2;
+  heading: string;
+  lines: string[];
+  code?: { lang: string; text: string };
+  narration: string[];
+  source?: string;
+  /** {part=...} で決めた部品 */
+  force?: string;
+};
 
 const RE = {
   h1: /^#\s+(.+)$/,
   h2: /^#{2,}\s+(.+)$/,
   bullet: /^\s*(?:[-*+]\s+|[・●]\s*)(.+)$/,
   numbered: /^\s*\d+\s*[.)．、]\s*(.+)$/,
-  bar: /^\s*(?:[-*+]\s+|[・●]\s*)?(.+?)\s*[:：]\s*(-?\d[\d,]*(?:\.\d+)?)\s*([^\d\s][^\s]*)?\s*$/,
+  // 単位は数字を含まない 6 字まで(「100万〜200万円程度」のような文はグラフにしない)。[アイコン] で始まる行も除く
+  bar: /^\s*(?:[-*+]\s+|[・●]\s*)?(?!\[[\w-]+\])(.+?)\s*[:：]\s*(-?\d[\d,]*(?:\.\d+)?)\s*([^\d\s][^\s\d]{0,5})?\s*$/,
   caption: /^\s*>(?!>)\s*(.+)$/,
   quote: /^\s*>>\s*(.+)$/,
   source: /^\s*(?:--|——|―+|—)\s*(.+)$/,
@@ -42,6 +65,9 @@ const RE = {
   number: /^\s*!!\s*([^\d\s-]*)\s*(-?\d[\d,]*(?:\.\d+)?)\s*(\S*)\s*(.*)$/,
   timeline: /^\s*(?:[-*+]\s+|[・●]\s*)?(\d{1,4}[^:：]{0,8}?)\s*[:：]\s*((?=.*[^\d\s.,%])\S.*)$/,
   fence: /^\s*```\s*(\w*)\s*$/,
+  narration: /^\s*(?:ナレーション|ナレ|読み上げ)\s*[:：]\s*(.*)$/,
+  sceneSource: /^\s*(?:出典|参考|ソース)\s*[:：]\s*(.+)$/,
+  force: /\s*\{\s*part\s*=\s*([\w-]+)\s*\}\s*$/,
 };
 
 /** コードの言語名を、コード部品の選択肢に合わせる */
@@ -55,6 +81,12 @@ const chunk = <T,>(list: T[], size: number): T[][] => {
   return out;
 };
 
+const newBlock = (level: 1 | 2, rawHeading: string): Block => {
+  const force = RE.force.exec(rawHeading);
+  const heading = force ? rawHeading.slice(0, force.index).trim() : rawHeading;
+  return { level, heading, lines: [], narration: [], ...(force ? { force: force[1] } : {}) };
+};
+
 const toBlocks = (text: string): Block[] => {
   const blocks: Block[] = [];
   let fence: { lang: string; lines: string[] } | null = null;
@@ -64,7 +96,7 @@ const toBlocks = (text: string): Block[] => {
     const f = RE.fence.exec(line);
     if (fence) {
       if (f && f[1] === '') {
-        if (blocks.length === 0) blocks.push({ level: 2, heading: '', lines: [] });
+        if (blocks.length === 0) blocks.push(newBlock(2, ''));
         blocks[blocks.length - 1].code = { lang: fence.lang, text: fence.lines.join('\n') };
         fence = null;
       } else fence.lines.push(raw);
@@ -77,12 +109,24 @@ const toBlocks = (text: string): Block[] => {
     const h2 = RE.h2.exec(line);
     const h1 = h2 ? null : RE.h1.exec(line);
     if (h1 || h2) {
-      blocks.push({ level: h1 ? 1 : 2, heading: (h1 ?? h2)![1].trim(), lines: [] });
+      blocks.push(newBlock(h1 ? 1 : 2, (h1 ?? h2)![1].trim()));
       continue;
     }
     if (line.trim() === '') continue;
-    if (blocks.length === 0) blocks.push({ level: 2, heading: '', lines: [] });
-    blocks[blocks.length - 1].lines.push(line);
+    if (blocks.length === 0) blocks.push(newBlock(2, ''));
+    const block = blocks[blocks.length - 1];
+    // ナレーションと出典は、部品の書き方を調べる前に取り分ける(「ラベル: 数字」などと間違えないため)
+    const nar = RE.narration.exec(line);
+    if (nar) {
+      if (nar[1].trim()) block.narration.push(nar[1].trim());
+      continue;
+    }
+    const src = RE.sceneSource.exec(line);
+    if (src) {
+      block.source = src[1].trim();
+      continue;
+    }
+    block.lines.push(line);
   }
   return blocks;
 };
@@ -143,7 +187,9 @@ const special = (b: Block): OutlineScene[] | null => {
   }
 
   const events = b.lines.map((l) => RE.timeline.exec(l)).filter((m): m is RegExpExecArray => !!m);
-  if (events.length >= 2 && events.length === b.lines.filter((l) => !RE.caption.test(l)).length) {
+  // 右側がすべて「数字 + 単位」なら年表ではなくグラフ(1993年: 448万戸 など)
+  const allNumeric = events.every((m) => RE.bar.test(m.input));
+  if (events.length >= 2 && !allNumeric && events.length === b.lines.filter((l) => !RE.caption.test(l)).length) {
     return chunk(events, 6).map((ev, i) => ({
       part: 'timeline',
       props: { heading: i === 0 ? heading : `${heading}(続き)`, events: ev.map((m) => ({ when: m[1].trim(), what: m[2].trim() })), caption },
@@ -217,6 +263,15 @@ const blockToScenes = (b: Block): OutlineScene[] => {
     }));
   }
 
+  // 「- [shield] 名前: 説明」の形の箇条書きはアイコン一覧にする
+  const iconItems = bullets.filter((t) => {
+    const m = ICON_ITEM.exec(t);
+    return m && isIconName(m[1]);
+  });
+  if (bullets.length >= 2 && iconItems.length === bullets.length && numbered.length === 0) {
+    return chunk(toCards(bullets), 6).map((cards, i) => ({ part: 'icons', props: { heading: i === 0 ? heading : `${heading}(続き)`, cards, caption } }));
+  }
+
   const items = [...bullets, ...numbered, ...plain];
   if (items.length === 0) return heading ? [{ part: 'title', props: { kicker: '', title: heading, subtitle: caption } }] : [];
   const isSummary = SUMMARY_HEADING.test(heading);
@@ -226,12 +281,124 @@ const blockToScenes = (b: Block): OutlineScene[] => {
   }));
 };
 
+/** 行から、箇条書き・番号の印と、ナレーションでない字幕を除いた中身を取り出す */
+const itemLines = (b: Block): string[] =>
+  b.lines
+    .filter((l) => !RE.caption.test(l) && !RE.tableRule.test(l))
+    .map((l) => (RE.bullet.exec(l)?.[1] ?? RE.numbered.exec(l)?.[1] ?? l).trim())
+    .filter(Boolean);
+
+const captionOf = (b: Block): string =>
+  b.lines
+    .map((l) => RE.caption.exec(l)?.[1].trim())
+    .filter(Boolean)
+    .join(' ');
+
+const PAIR = /^(?:\[([\w-]+)\]\s*)?(.+?)\s*[:：]\s*(.+)$/;
+const ICON_ITEM = /^\[([\w-]+)\]\s*(.+)$/;
+
+/** アイコン一覧のカード(「[アイコン] 名前: 説明」。アイコンを省くと文から選ぶ) */
+const toCards = (items: string[]) => {
+  const used = new Set<string>();
+  return items.map((item) => {
+    const pair = PAIR.exec(item);
+    const iconOnly = ICON_ITEM.exec(item);
+    const explicit = pair?.[1] ?? iconOnly?.[1];
+    const title = pair ? pair[2].trim() : (iconOnly?.[2] ?? item).trim();
+    const text = pair ? pair[3].trim() : '';
+    const icon = explicit && isIconName(explicit) ? explicit : guessIcon(`${title} ${text}`, used);
+    used.add(icon);
+    return { icon, title, text };
+  });
+};
+
+/**
+ * {part=...} で決めた部品に作り直す。書き方からの推測と同じならそのまま。
+ * 合う書き方がない部品は、見出しと字幕だけを引き継ぐ(notes で知らせる)。
+ */
+const forcePart = (b: Block, auto: OutlineScene[]): OutlineScene[] => {
+  const want = b.force!;
+  if (auto.length > 0 && auto.every((s) => s.part === want)) return auto;
+  const heading = b.heading;
+  const caption = captionOf(b);
+  const items = itemLines(b);
+  const bars = b.lines.map((l) => RE.bar.exec(l)).filter((m): m is RegExpExecArray => !!m);
+  const many = <T,>(list: T[], size: number, make: (part: T[], heading: string) => Record<string, unknown>) =>
+    chunk(list, size).map((p, i) => ({ part: want, props: make(p, i === 0 ? heading : `${heading}(続き)`) }));
+  switch (want) {
+    case 'bullets':
+      return many(items, 6, (it, h) => ({ heading: h, items: it }));
+    case 'summary':
+      return many(items, 5, (it, h) => ({ heading: h, items: it }));
+    case 'flow':
+      return many(items, 5, (it, h) => ({ heading: h, steps: it, caption }));
+    case 'steps':
+      return many(items, 8, (it, h) => ({ heading: h, steps: it, caption }));
+    case 'icons':
+      return many(toCards(items), 6, (cards, h) => ({ heading: h, cards, caption }));
+    case 'timeline': {
+      const events = items.map((it) => PAIR.exec(it)).filter((m): m is RegExpExecArray => !!m);
+      if (events.length >= 2) return many(events, 6, (ev, h) => ({ heading: h, events: ev.map((m) => ({ when: m[2].trim(), what: m[3].trim() })), caption }));
+      break;
+    }
+    case 'bars':
+    case 'pie':
+    case 'line': {
+      if (bars.length < 1) break;
+      const rows = bars.map((m) => ({ label: m[1].trim(), value: Number(m[2].replace(/,/g, '')) }));
+      const unit = bars.find((m) => m[3])?.[3] ?? '';
+      if (want === 'bars') return many(rows, 6, (r, h) => ({ heading: h, rows: r, unit, max: 0, caption }));
+      if (want === 'pie') return [{ part: 'pie', props: { heading, slices: rows.slice(0, 6), centerLabel: '', caption } }];
+      return [{ part: 'line', props: { heading, points: rows.slice(0, 10), unit, caption } }];
+    }
+    case 'compare': {
+      const pairs = items.map((it) => PAIR.exec(it)).filter((m): m is RegExpExecArray => !!m);
+      const names = [...new Set(pairs.map((m) => m[2].trim()))];
+      if (names.length === 2) {
+        const side = (n: string) => pairs.filter((m) => m[2].trim() === n).map((m) => m[3].trim());
+        return [{ part: 'compare', props: { heading, leftTitle: names[0], leftItems: side(names[0]), rightTitle: names[1], rightItems: side(names[1]) } }];
+      }
+      break;
+    }
+    case 'title':
+      return [{ part: 'title', props: { kicker: '', title: heading, subtitle: items[0] ?? caption } }];
+    case 'number': {
+      const m = /(-?\d[\d,]*(?:\.\d+)?)\s*(\S*)/.exec(items[0] ?? '');
+      if (m) return [{ part: 'number', props: { heading, prefix: '', value: Number(m[1].replace(/,/g, '')), unit: m[2], label: items[1] ?? caption, note: '' } }];
+      break;
+    }
+  }
+  const base = auto[0]?.props ?? {};
+  return [
+    {
+      part: want,
+      props: { heading, caption, ...('heading' in base ? { heading: base.heading } : {}) },
+      notes: [`{part=${want}} に合う書き方が見つからなかったため、見出しだけを引き継ぎました(エディタで中身を入れてください)`],
+    },
+  ];
+};
+
+/** ブロックをシーンにし、部品の指定・ナレーション・出典を付ける */
+const blockWithExtras = (b: Block): OutlineScene[] => {
+  const scenes = b.force ? forcePart(b, blockToScenes(b)) : blockToScenes(b);
+  if (scenes.length === 0) return scenes;
+  const narration = b.narration.join('');
+  if (narration) {
+    scenes[0].narration = narration;
+    if (scenes.length > 1) {
+      (scenes[0].notes ??= []).push(`「${b.heading}」は ${scenes.length} シーンに分かれたため、ナレーションは最初のシーンだけに付きました(項目を減らすか、見出しを分けてください)`);
+    }
+  }
+  if (b.source) for (const s of scenes) s.source = b.source;
+  return scenes;
+};
+
 /** 文章からシーンの並びを作る。title は最初の「# 見出し」 */
 export const parseOutline = (text: string): { title: string; scenes: OutlineScene[] } => {
   const blocks = toBlocks(text);
   return {
     title: blocks.find((b) => b.level === 1)?.heading ?? '',
-    scenes: blocks.flatMap(blockToScenes),
+    scenes: blocks.flatMap(blockWithExtras),
   };
 };
 

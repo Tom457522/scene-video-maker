@@ -56,7 +56,7 @@ export const schema = z.object({
 
 const GAP = 24;
 
-export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames }) => {
+export const Component: PartComponent<typeof schema> = ({ props, frame, durationInFrames, cues }) => {
   const n = props.cards.length;
   const cols = n <= 4 ? n : 3;
   const rows = Math.ceil(n / cols);
@@ -71,7 +71,8 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
     props.cards.map((c) => c.text),
     { maxWidth: textW, maxHeight: cardH - iconBox - titleSize * 1.4 - 64, max: 24, min: 13 },
   );
-  const until = settleBy(durationInFrames, 0.5);
+  // ナレーションに合わせるときは、最後の項目が出たところを「出そろった」時点にする
+  const until = Math.max(settleBy(durationInFrames, 0.5), cues?.length ? stagger(n - 1, n, 0, 0, 10, cues) : 0);
   const offsetY = top + Math.max(0, (bottom - top - (rows * cardH + (rows - 1) * GAP)) / 2);
 
   return (
@@ -83,7 +84,7 @@ export const Component: PartComponent<typeof schema> = ({ props, frame, duration
         // 最後の行が少ないときは中央に寄せる
         const inRow = row === rows - 1 ? n - row * cols : cols;
         const rowOffset = ((cols - inRow) * (cardW + GAP)) / 2;
-        const s = stagger(i, n, 12, until, 10);
+        const s = stagger(i, n, 12, until, 10, cues);
         const p = progress(frame, s, T.enter);
         const ic = back(frame, s + 4, T.enter);
         const pulse = bump(frame, s + 18, 10);
