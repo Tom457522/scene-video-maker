@@ -1,6 +1,7 @@
 /**
  * プロジェクトを 1 つの zip にまとめる・zip から読み込む(別の PC に移す・人に渡すため)。
- * zip の中身: project.json と、使っている画像 assets/<ファイル名>。
+ * zip の中身: project.json と、使っている画像 assets/<ファイル名>、手持ちの BGM assets/audio/<ファイル名>。
+ * 自動で作る BGM(audio/bgm-calm.wav など)は入れず、読み込むときに作り直す。
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import { strFromU8, strToU8, unzipSync, zipSync, type Unzipped } from 'fflate';
 import { projectSchema, type Project } from '../src/video/project.ts';
 import { ASSETS_DIR, MAX_ASSET_BYTES, isValidAssetName, listAssets, saveAsset } from './assets.ts';
 import { isValidName, listProjects, writeProject } from './projects.ts';
+import { MAX_BGM_BYTES, ensureMoodBgm, isUploadedBgmName, looksLikeAudio, moodOf, saveBgm } from './bgm.ts';
 
 /** 読み込める zip の中身の合計の上限 */
 const MAX_TOTAL = 100 * 1024 * 1024;
@@ -27,6 +29,12 @@ export const exportArchive = async (project: unknown): Promise<Uint8Array> => {
   const files: Record<string, Uint8Array> = { 'project.json': strToU8(`${JSON.stringify(p, null, 2)}\n`) };
   for (const a of await listAssets()) {
     if (used.has(a.name)) files[`assets/${a.name}`] = new Uint8Array(await fs.readFile(path.join(ASSETS_DIR, a.name)));
+  }
+  // 手持ちの BGM(見つからなければ入れない)
+  const bgm = /^audio\/([^/]+)$/.exec(p.settings.bgm)?.[1];
+  if (bgm && isUploadedBgmName(bgm)) {
+    const bytes = await fs.readFile(path.join(ASSETS_DIR, 'audio', bgm)).catch(() => null);
+    if (bytes) files[`assets/audio/${bgm}`] = new Uint8Array(bytes);
   }
   return zipSync(files, { level: 6 });
 };
@@ -54,6 +62,8 @@ export const importArchive = async (data: Uint8Array, requestedName: string): Pr
         total += f.originalSize;
         if (count > MAX_ENTRIES || total > MAX_TOTAL) throw new Error('zip の中身が多すぎるか大きすぎます');
         if (f.name === 'project.json') return f.originalSize <= 5 * 1024 * 1024;
+        const audio = /^assets\/audio\/([^/]+)$/.exec(f.name);
+        if (audio) return isUploadedBgmName(audio[1]) && f.originalSize <= MAX_BGM_BYTES;
         const m = /^assets\/([^/]+)$/.exec(f.name);
         return !!m && isValidAssetName(m[1]) && f.originalSize <= MAX_ASSET_BYTES;
       },
@@ -77,6 +87,24 @@ export const importArchive = async (data: Uint8Array, requestedName: string): Pr
       project = projectSchema.parse(replaceExact(project, name, saved));
     }
   }
+  // BGM: 手持ちの曲は保存し(同じ名前で中身が違えば名前を付け直す)、自動で作る曲は作り直す
+  for (const [entry, bytes] of Object.entries(unzipped)) {
+    const m = /^assets\/audio\/([^/]+)$/.exec(entry);
+    if (!m) continue;
+    const file = `audio/${m[1]}`;
+    if (!looksLikeAudio(Buffer.from(bytes))) continue;
+    const existing = await fs.readFile(path.join(ASSETS_DIR, file)).catch(() => null);
+    if (existing && Buffer.compare(existing, Buffer.from(bytes)) === 0) continue;
+    // 保存するときに先頭の bgm-file- が付くので、元の名前から外して渡す
+    const saved = await saveBgm(m[1].replace(/^bgm-file-/, ''), Buffer.from(bytes));
+    if (saved !== file) {
+      renamed[file] = saved;
+      project = projectSchema.parse(replaceExact(project, file, saved));
+    }
+  }
+  const mood = moodOf(project.settings.bgm);
+  if (mood) await ensureMoodBgm(mood);
+
   const base = isValidName(requestedName) ? requestedName : 'よみこんだ動画';
   const name = await uniqueName(base);
   await writeProject(name, project);

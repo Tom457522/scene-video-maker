@@ -45,6 +45,15 @@ export const ensureMoodBgm = async (mood: string): Promise<string> => {
   return file;
 };
 
+/** 手持ちの曲として保存した名前か(audio/ の中のファイル名) */
+export const isUploadedBgmName = (name: string): boolean => NAME_RE.test(name) && path.basename(name) === name;
+
+/** 自動で作る曲の場所なら、その種類(calm など)を返す */
+export const moodOf = (file: string): string | null => {
+  const m = /^audio\/bgm-(\w+)\.wav$/.exec(file);
+  return m && (MOODS as string[]).includes(m[1]) ? m[1] : null;
+};
+
 /** 先頭のバイトで、本当に音声かを確かめる(MP3・WAV・M4A/AAC・Ogg) */
 export const looksLikeAudio = (b: Buffer): boolean =>
   b.subarray(0, 3).toString('latin1') === 'ID3' ||
