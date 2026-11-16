@@ -115,7 +115,8 @@ export const checkFacts = (project: Pick<Project, 'scenes'>, sourceText: string)
         if (seen.has(key)) continue;
         seen.add(key);
         checked++;
-        const candidates = known.filter((k) => k.percent === n.percent || !k.percent);
+        // 割合は割合とだけ、ふつうの数はふつうの数とだけ比べる(「10%」を「10人」で認めないため)
+        const candidates = known.filter((k) => k.percent === n.percent);
         if (candidates.some((k) => same(n.value, k.value))) continue;
         const near = candidates.find((k) => close(n.value, k.value));
         const context = normalize(stripMarks(text)).trim().slice(0, 80);

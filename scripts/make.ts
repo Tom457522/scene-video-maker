@@ -9,6 +9,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { EXPORT_FORMATS, QUALITIES, type ExportFormat, type Quality } from '../src/remotion/composition-id.ts';
 import type { LayoutIssue } from '../src/video/layout-check.ts';
+import { MAX_SECONDS } from '../src/video/project.ts';
 import { checkFacts, describeFact, type FactReport } from '../src/video/facts.ts';
 import { checkQuality, describeQuality } from '../src/video/quality.ts';
 import { buildCues, toSrt } from '../src/video/srt.ts';
@@ -158,6 +159,10 @@ try {
     if (!values.json) process.stdout.write('\n');
     project = voiced.project;
     notes.push(...voiced.notes);
+    // 声がシーンに収まらないまま書き出すと途中で切れるので、ここで止める
+    if (voiced.tooLong.length > 0) {
+      fail(`ナレーションが ${MAX_SECONDS} 秒を超えるシーンがあります(シーン ${voiced.tooLong.join('、')})。文を短くするかシーンを分けてください`, { notes });
+    }
     if (sfx) await prepareSfx();
   }
   const hasVoice = project.scenes.some((s) => s.audio);

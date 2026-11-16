@@ -203,7 +203,15 @@ export const buildDescription = (project: Project, resolve: (i: number) => Recor
   const out: string[] = [project.title, ''];
   const chapters = youtubeChapters(mergeShortChapters(buildChapters(project, resolve)));
   if (chapters.warnings.length === 0) out.push('■ 目次', chapters.text, '');
-  const sources = [...new Set(project.scenes.map((s) => s.source?.trim()).filter((x): x is string => !!x))];
+  // シーンの出典に加え、引用の部品の出典(-- 出典)も集める
+  const sources = [
+    ...new Set(
+      project.scenes
+        .flatMap((s, i) => [s.source, s.part === 'quote' ? resolve(i).source : undefined])
+        .map((x) => (typeof x === 'string' ? x.trim() : ''))
+        .filter(Boolean),
+    ),
+  ];
   if (sources.length > 0) out.push('■ 出典', ...sources.map((s) => `・${s}`), '');
   const credits = [credit, project.settings.bgm.startsWith('audio/bgm-') ? 'BGM: 自動生成' : ''].filter(Boolean);
   if (credits.length > 0) out.push('■ クレジット', ...credits, '');

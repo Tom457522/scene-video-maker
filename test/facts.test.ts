@@ -41,3 +41,8 @@ test('グラフの値(数値の入力)も照合する', () => {
   assert.equal(r.problems.length, 1);
   assert.equal(r.problems[0].text, '42%');
 });
+
+test('割合は割合とだけ比べる(「10%」を「10人」で認めない)', () => {
+  const r = checkFacts({ scenes: [scene({ items: ['利用率 10%'] })] }, '参加者は 10人 だった。');
+  assert.deepEqual(r.problems.map((p) => [p.kind, p.text]), [['missing', '10%']]);
+});

@@ -70,9 +70,11 @@ export const addNarration = async (
   synth: Synth,
   resolve: (i: number) => Record<string, unknown>,
   onProgress: (done: number, total: number) => void = () => undefined,
-): Promise<{ project: Project; notes: VoiceNote[] }> => {
+): Promise<{ project: Project; notes: VoiceNote[]; tooLong: number[] }> => {
   await fs.mkdir(AUDIO_DIR, { recursive: true });
   const notes: VoiceNote[] = [];
+  /** 音声がシーンの上限(60 秒)に収まらないシーンの番号(そのまま書き出すと声が途中で切れる) */
+  const tooLong: number[] = [];
   const total = project.scenes.filter((s) => s.narration?.trim()).length;
   let done = 0;
   const scenes = [];
@@ -109,6 +111,7 @@ export const addNarration = async (
     const lead = scene.part === 'title' ? 0.8 : LEAD;
     let seconds = Math.round((lead + duration + TAIL) * 10) / 10;
     if (seconds > MAX_SECONDS) {
+      tooLong.push(i + 1);
       notes.push({ scene: i + 1, message: `ナレーションが長すぎます(${Math.round(duration)} 秒)。シーンは ${MAX_SECONDS} 秒までなので、文を短くするかシーンを分けてください` });
       seconds = MAX_SECONDS;
     }
@@ -126,7 +129,7 @@ export const addNarration = async (
     });
     onProgress(++done, total);
   }
-  return { project: { ...project, scenes }, notes };
+  return { project: { ...project, scenes }, notes, tooLong };
 };
 
 /** BGM を用意して設定に入れる。mood か、手持ちの音声ファイルのパス */

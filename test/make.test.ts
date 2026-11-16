@@ -112,3 +112,9 @@ test('見本の台本(examples/空き家)は、数字がレポートと合い、
   const q = checkQuality(project, make.resolverFor(project, parts));
   assert.ok(q.score >= 90, JSON.stringify(q.items));
 });
+
+test('buildDescription: 引用の出典も「出典」に入れる', async () => {
+  const { parts } = await loadPartsInNode();
+  const { project } = make.outlineToProject(`# 題\n\n## 名言\n>> 知は力なり\n-- フランシス・ベーコン`, parts);
+  assert.match(make.buildDescription(project, make.resolverFor(project, parts), ''), /■ 出典\n・フランシス・ベーコン/);
+});

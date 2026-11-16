@@ -72,6 +72,12 @@ test('ナレーションを ▶ ごとに音声にし、項目を出す時刻・
   assert.ok(checkQuality(r.project).items.some((q) => q.message.includes('ナレーションのないシーン')));
 });
 
+test('音声が 60 秒を超えるシーンは tooLong で知らせる', async () => {
+  const project = projectSchema.parse({ title: 't', scenes: [{ part: 'bullets', seconds: 5, props: { heading: 'h', items: ['a'] }, narration: 'あ'.repeat(700) }] });
+  const r = await addNarration(project, fakeSynth, (i) => project.scenes[i].props);
+  assert.deepEqual(r.tooLong, [1]);
+});
+
 test('BGM と効果音のファイルを用意する', async () => {
   const project = projectSchema.parse({ title: 't', scenes: [] });
   const p = await prepareBgm(project, 'calm', 0.2);
