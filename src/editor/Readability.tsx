@@ -67,7 +67,7 @@ export const ReadabilityHint = ({ smallest }: { smallest: Smallest }) => {
   if (size >= SMALL_TEXT) return <div className="hint">文字の大きさ: いちばん小さい文字で {size}px(読みやすい大きさです)</div>;
   return (
     <div className="hint warn">
-      ⚠ 文字が{size < TINY_TEXT ? 'とても小さく、読みにくくなっています' : '小さめです'}(いちばん小さい文字で {size}px: 「{smallest.text}」)。
+      文字が{size < TINY_TEXT ? 'とても小さく、読みにくくなっています' : '小さめです'}(いちばん小さい文字で {size}px: 「{smallest.text}」)。
       文を短くするか、項目を減らすと大きくなります。
     </div>
   );

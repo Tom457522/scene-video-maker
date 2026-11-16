@@ -4,6 +4,7 @@ import { getPart, resolveProps } from '../parts/registry';
 import { buildChapters, youtubeChapters } from '../video/chapters';
 import type { Project } from '../video/project';
 import { Modal } from './Modal';
+import { showAlert } from './dialogs';
 
 export const ChaptersDialog = ({ project, onClose }: { project: Project; onClose: () => void }) => {
   const chapters = buildChapters(project, (i) => {
@@ -32,7 +33,7 @@ export const ChaptersDialog = ({ project, onClose }: { project: Project; onClose
           onClick={() =>
             navigator.clipboard.writeText(text).then(
               () => setCopied(true),
-              () => window.alert('コピーできませんでした。文字を選んで Ctrl+C でコピーしてください。'),
+              () => void showAlert('コピーできませんでした', '文字を選んで Ctrl+C でコピーしてください。'),
             )
           }
         >

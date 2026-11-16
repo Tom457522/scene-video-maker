@@ -1,4 +1,4 @@
-/** 中央: プレビュー(再生/停止、シークバー、シーンの区切り) */
+/** 中央: プレビュー(再生/停止、シークバー、シーンの区切り。繰り返し・縦長の切り替えは動画の右上) */
 import { Player, type PlayerRef } from '@remotion/player';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { VIDEO } from '../kit/theme';
@@ -6,6 +6,7 @@ import { ProjectVideo } from '../video/ProjectVideo';
 import { VERTICAL, VerticalVideo } from '../video/VerticalVideo';
 import { cancelPick, finishPick, usePick } from './pick';
 import { formatSeconds, sceneTimeline, totalFrames, type Project } from '../video/project';
+import { UiIcon } from './ui-icons';
 
 export type PreviewHandle = {
   toggleLoop: () => void;
@@ -15,9 +16,9 @@ export type PreviewHandle = {
   getFrame: () => number;
 };
 
-type Props = { project: Project; selected: number; onSelectScene: (i: number) => void };
+type Props = { project: Project; selected: number; onSelectScene: (i: number) => void; onShowKeys: () => void };
 
-export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, onSelectScene }, ref) => {
+export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, onSelectScene, onShowKeys }, ref) => {
   const player = useRef<PlayerRef>(null);
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -98,6 +99,35 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
           inFrame={loopRange?.from ?? null}
           outFrame={loopRange?.to ?? null}
         />
+        <div className="player-tools">
+          <button
+            type="button"
+            className={loopScene ? 'on' : ''}
+            aria-pressed={loopScene}
+            title="選んでいるシーンだけを繰り返し再生(L)"
+            onClick={() => {
+              const next = !loopScene;
+              setLoopScene(next);
+              if (next && timeline[selected]) {
+                player.current?.seekTo(timeline[selected].from);
+                player.current?.play();
+              }
+            }}
+          >
+            <UiIcon name="repeat" size={14} />
+            繰り返し
+          </button>
+          <button
+            type="button"
+            className={vertical ? 'on' : ''}
+            aria-pressed={vertical}
+            title="縦長(9:16・ショート向け)で書き出したときの見え方に切り替える"
+            onClick={() => setVertical((v) => !v)}
+          >
+            <UiIcon name={vertical ? 'landscape' : 'phone'} size={14} />
+            {vertical ? '横長に戻す' : '縦長で見る'}
+          </button>
+        </div>
         {pick && (
           <div
             className="pick-overlay"
@@ -124,8 +154,8 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
       </div>
 
       <div className="transport">
-        <button type="button" className="play" onClick={() => player.current?.toggle()} title="再生 / 停止(スペース)">
-          {playing ? '❚❚' : '▶'}
+        <button type="button" className="play" onClick={() => player.current?.toggle()} title="再生 / 停止(スペース)" aria-label={playing ? '停止' : '再生'}>
+          <UiIcon name={playing ? 'pause' : 'play'} />
         </button>
         <div className="seek">
           <div className="seek-scenes">
@@ -157,35 +187,14 @@ export const Preview = forwardRef<PreviewHandle, Props>(({ project, selected, on
             }}
           />
         </div>
-        <button
-          type="button"
-          className={loopScene ? 'loop on' : 'loop'}
-          title="選んでいるシーンだけを繰り返し再生(L)"
-          onClick={() => {
-            const next = !loopScene;
-            setLoopScene(next);
-            if (next && timeline[selected]) {
-              player.current?.seekTo(timeline[selected].from);
-              player.current?.play();
-            }
-          }}
-        >
-          🔁 シーン
-        </button>
-        <button
-          type="button"
-          className={vertical ? 'loop on' : 'loop'}
-          title="縦長(9:16・ショート向け)で書き出したときの見え方に切り替える"
-          onClick={() => setVertical((v) => !v)}
-        >
-          {vertical ? '▯ 縦' : '▭ 横'}
-        </button>
         <div className="time">
           {formatSeconds(frame / VIDEO.fps)} / {formatSeconds(total / VIDEO.fps)}
         </div>
       </div>
-      <div className="muted small center">
-        スペース: 再生/停止 ・ L: シーンを繰り返す ・ ↑↓: シーンを選ぶ ・ Alt+↑↓: 並べ替え ・ Ctrl+D: 複製 ・ Delete: 削除 ・ Ctrl+S: 保存 ・ Ctrl+Z: 元に戻す
+      <div className="keys-link">
+        <button type="button" className="link muted" onClick={onShowKeys}>
+          <UiIcon name="help" size={14} /> キー操作の一覧(? キー)
+        </button>
       </div>
     </main>
   );

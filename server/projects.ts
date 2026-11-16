@@ -15,6 +15,8 @@ export const HISTORY_DIR = path.join(PROJECTS_DIR, '.history');
 export const TRASH_DIR = path.join(PROJECTS_DIR, '.trash');
 /** 1 つのプロジェクトについて残す前の版の数 */
 export const HISTORY_LIMIT = 30;
+/** 自動保存では、前の版をこの間隔(ミリ秒)より細かくは残さない(打つたびに履歴が埋まらないように) */
+export const AUTO_HISTORY_INTERVAL = 10 * 60 * 1000;
 export const OUT_DIR = path.join(ROOT, 'out');
 
 /** 使える名前: 日本語・英数字・空白・_ - のみ、60 文字まで(パスの区切りやドットは不可) */
@@ -53,12 +55,19 @@ const exists = (file: string) =>
     () => false,
   );
 
-/** 保存の前に、今のファイルを .history/<名前>/<日時>.json に残す(古いものから消して HISTORY_LIMIT 件まで) */
-const keepHistory = async (name: string) => {
+/**
+ * 保存の前に、今のファイルを .history/<名前>/<日時>.json に残す(古いものから消して HISTORY_LIMIT 件まで)。
+ * auto(自動保存)のときは、いちばん新しい版が AUTO_HISTORY_INTERVAL より新しければ残さない
+ */
+const keepHistory = async (name: string, auto: boolean) => {
   const file = fileOf(name);
   if (!(await exists(file))) return;
   const dir = path.join(HISTORY_DIR, name);
   await fs.mkdir(dir, { recursive: true });
+  if (auto) {
+    const newest = (await fs.readdir(dir)).filter((f) => f.endsWith('.json')).sort().pop();
+    if (newest && Date.now() - (await fs.stat(path.join(dir, newest))).mtimeMs < AUTO_HISTORY_INTERVAL) return;
+  }
   await fs.copyFile(file, path.join(dir, `${stamp()}.json`));
   const versions = (await fs.readdir(dir)).filter((f) => f.endsWith('.json')).sort();
   for (const old of versions.slice(0, Math.max(0, versions.length - HISTORY_LIMIT))) {
@@ -126,7 +135,8 @@ export const renameProject = async (from: string, to: string): Promise<void> => 
   if (await exists(hFrom)) await moveDirMerge(hFrom, path.join(HISTORY_DIR, to));
 };
 
-export const writeProject = async (name: string, data: unknown): Promise<Project> => {
+/** 保存する。auto は自動保存(前の版を残す間隔をあける) */
+export const writeProject = async (name: string, data: unknown, { auto = false }: { auto?: boolean } = {}): Promise<Project> => {
   const project = projectSchema.parse(data);
   await fs.mkdir(PROJECTS_DIR, { recursive: true });
   const file = fileOf(name);
@@ -134,7 +144,7 @@ export const writeProject = async (name: string, data: unknown): Promise<Project
   const before = (await exists(file)) ? await fs.readFile(file, 'utf8') : null;
   const next = `${JSON.stringify(project, null, 2)}\n`;
   if (before === next) return project;
-  await keepHistory(name);
+  await keepHistory(name, auto);
   const tmp = `${file}.tmp`;
   await fs.writeFile(tmp, next, 'utf8');
   await fs.rename(tmp, file);

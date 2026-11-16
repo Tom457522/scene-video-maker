@@ -14,21 +14,21 @@ export const openEditor = async (page: Page, project = 'sample') => {
   await expect(page.locator('.scene').first()).toBeVisible();
 };
 
-/** 上部のメニューの項目を押す */
-export const menu = async (page: Page, menuName: 'プロジェクト' | 'ツール', item: string) => {
-  await page.locator('.menu summary', { hasText: menuName }).click();
-  await page.locator('.menu-items button', { hasText: item }).click();
+/** 左上のプロジェクトのメニューの項目を押す */
+export const menu = async (page: Page, item: string) => {
+  await page.getByRole('button', { name: 'プロジェクトのメニュー' }).click();
+  await page.getByRole('menuitem', { name: item }).click();
 };
 
-/** 確認・入力のダイアログに答える(prompt には answer を入れる) */
-export const answerDialogs = (page: Page, answer = '') => {
-  page.on('dialog', (d) => {
-    if (process.env.E2E_DEBUG) console.log(`[dialog] ${d.type()}: ${d.message()}`);
-    void (d.type() === 'prompt' ? d.accept(answer) : d.accept());
-  });
+/** アプリの確認・入力のダイアログに答える(text を渡すと入力欄に入れる) */
+export const answerDialog = async (page: Page, button: string, text?: string) => {
+  const dialog = page.locator('.modal').last();
+  if (text !== undefined) await dialog.locator('input[type=text]').fill(text);
+  await dialog.getByRole('button', { name: button, exact: true }).click();
 };
 
-export const projectSelect = (page: Page) => page.locator('.topbar > select');
+/** 今開いているプロジェクトの名前 */
+export const projectName = (page: Page) => page.locator('.project-name');
 
 /** 一時フォルダに保存されたプロジェクトを読む */
 export const readSavedProject = (name: string) => JSON.parse(readFileSync(path.join(E2E_PROJECTS_DIR, `${name}.json`), 'utf8'));

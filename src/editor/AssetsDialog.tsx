@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { assetUrl, refreshAssets, uploadAsset } from './assets';
 import { Modal } from './Modal';
+import { askConfirm, showAlert } from './dialogs';
 
 type Usage = { name: string; size: number; usedBy: string[] };
 
@@ -29,9 +30,9 @@ export const AssetsDialog = ({ current, usedNow, onClose }: { current: string; u
 
   const remove = async (a: Usage, users: string[]) => {
     const msg = users.length > 0 ? `「${a.name}」は ${users.join('、')} で使われています。削除すると、そこは「画像が見つかりません」になります。削除しますか?` : `「${a.name}」を削除しますか?`;
-    if (!window.confirm(`${msg}\n(projects/.trash/ に移るので、手で戻すこともできます)`)) return;
+    if (!(await askConfirm({ title: '画像の削除', message: `${msg}\n(projects/.trash/ に移るので、手で戻すこともできます)`, ok: '削除する', danger: true }))) return;
     const res = await fetch(`/api/assets/${encodeURIComponent(a.name)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    if (!res.ok) window.alert(((await res.json()) as { error?: string }).error ?? '削除できませんでした');
+    if (!res.ok) void showAlert('削除できませんでした', ((await res.json()) as { error?: string }).error ?? '');
     await refreshAssets();
     await load();
   };
@@ -58,7 +59,7 @@ export const AssetsDialog = ({ current, usedNow, onClose }: { current: string; u
                 await uploadAsset(f);
                 await load();
               } catch (err) {
-                window.alert(`画像を追加できませんでした: ${(err as Error).message}`);
+                void showAlert('画像を追加できませんでした', (err as Error).message);
               }
             }}
           />

@@ -62,3 +62,13 @@ test('改名先に履歴フォルダだけが残っていても、まとめて�
   await store.renameProject('f', 'g');
   assert.equal((await store.listHistory('g')).length, 2);
 });
+
+test('自動保存では、前の版を間をあけてしか残さない(手で保存したときは毎回残す)', async () => {
+  await store.writeProject('auto', proj('1'));
+  await store.writeProject('auto', proj('2'), { auto: true });
+  await store.writeProject('auto', proj('3'), { auto: true });
+  await store.writeProject('auto', proj('4'), { auto: true });
+  assert.equal((await store.listHistory('auto')).length, 1);
+  await store.writeProject('auto', proj('5'));
+  assert.equal((await store.listHistory('auto')).length, 2);
+});

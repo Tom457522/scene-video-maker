@@ -3,7 +3,7 @@
  *
  *   GET  /api/projects            プロジェクト名の一覧
  *   GET  /api/projects/:name      読み込み
- *   PUT  /api/projects/:name      保存
+ *   PUT  /api/projects/:name[?auto=1]  保存(auto=1 は自動保存。前の版は 10 分おきにだけ残す)
  *   GET  /api/render              書き出しの一覧(順番待ち・書き出し中・終わったもの)
  *   POST /api/render              書き出しを順番待ちに入れる { name, project, format?, quality?, scene? } → { job }
  *                                 (format: 720p / 1080p / vertical / gif、quality: light / normal / high)
@@ -176,7 +176,8 @@ const handle = async (req: IncomingMessage, res: ServerResponse) => {
       }
       if (method === 'PUT') {
         try {
-          return send(res, 200, { project: await writeProject(name, await readJson(req)) });
+          const auto = url.searchParams.get('auto') === '1';
+          return send(res, 200, { project: await writeProject(name, await readJson(req), { auto }) });
         } catch (e) {
           return send(res, 400, { error: errorMessage(e) });
         }

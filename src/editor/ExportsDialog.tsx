@@ -1,9 +1,11 @@
-/** 書き出しの一覧(順番待ち・書き出し中・終わったもの)と、まとめて書き出し */
+/** 書き出しの 1 件の表示(順番待ち・書き出し中・終わったもの)と、まとめて書き出し */
 import { useState } from 'react';
 import { EXPORT_FORMATS, QUALITIES, type ExportFormat, type Quality } from '../remotion/composition-id';
 import type { Project } from '../video/project';
 import { api, type RenderJob } from './api';
 import { Modal } from './Modal';
+import { UiIcon } from './ui-icons';
+import { showAlert } from './dialogs';
 
 const stageLabel: Record<RenderJob['stage'], string> = {
   waiting: '順番待ち',
@@ -27,8 +29,8 @@ export const JobRow = ({ job }: { job: RenderJob }) => (
           </>
         )}
         {job.status === 'done' && job.file && (
-          <a href={api.outputUrl(job.file)} download>
-            ⬇ {job.file}
+          <a className="dl-link" href={api.outputUrl(job.file)} download>
+            <UiIcon name="download" size={14} /> 保存する <span className="muted">{job.file}</span>
           </a>
         )}
         {job.status === 'cancelled' && <span className="muted">中止しました</span>}
@@ -46,18 +48,6 @@ export const JobRow = ({ job }: { job: RenderJob }) => (
       </button>
     )}
   </div>
-);
-
-export const ExportsDialog = ({ jobs, onClose }: { jobs: RenderJob[]; onClose: () => void }) => (
-  <Modal title="書き出しの一覧" onClose={onClose}>
-    <p className="muted small">書き出しは 1 つずつ順に行います。終わったファイルは out/ にも保存されています。</p>
-    {jobs.length === 0 && <p className="muted">まだ書き出していません。</p>}
-    <div className="job-list">
-      {jobs.map((j) => (
-        <JobRow key={j.id} job={j} />
-      ))}
-    </div>
-  </Modal>
 );
 
 /** まとめて書き出し: 複数のプロジェクト × 複数の形式を順番待ちに入れる */
@@ -144,7 +134,7 @@ export const BatchDialog = ({
                   }
                 }
               } catch (e) {
-                window.alert(`順番待ちに入れられませんでした: ${(e as Error).message}`);
+                void showAlert('順番待ちに入れられませんでした', (e as Error).message);
               }
               onQueued(n);
               onClose();
