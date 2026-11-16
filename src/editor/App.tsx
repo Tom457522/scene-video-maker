@@ -183,6 +183,15 @@ export const App = () => {
     [reset],
   );
 
+  /**
+   * 動画が 1 つもないときの、まだ名前だけの空の動画。何か変えるまでは保存しない
+   * (触っていないのに空のファイルができないように、保存済みと同じ扱いにする)
+   */
+  const loadPlaceholder = useCallback(() => {
+    const p = toProject(emptyProject(''));
+    load('新しい動画', p, JSON.stringify(p));
+  }, [load]);
+
   const open = useCallback(
     async (n: string) => {
       try {
@@ -214,9 +223,9 @@ export const App = () => {
       }
       const first = last && list.includes(last) ? last : list.includes('sample') ? 'sample' : list[0];
       if (first) await open(first);
-      else load('新しい動画', toProject(emptyProject('')), '');
+      else loadPlaceholder();
     })();
-  }, [open, load]);
+  }, [open, load, loadPlaceholder]);
 
   /** 今の内容を保存する。auto は自動保存(前の版を残す間隔をあける) */
   const saveNow = useCallback(
@@ -559,7 +568,7 @@ export const App = () => {
       setProjects(list);
       const removed = name;
       if (list[0]) await open(list[0]);
-      else load('新しい動画', toProject(emptyProject('')), '');
+      else loadPlaceholder();
       flash(`「${removed}」を削除しました`);
     } catch (e) {
       setLoaded(true);
